@@ -126,17 +126,18 @@ class Command:
 
     def repeated(self, name: str, values: Iterable[str | os.PathLike[str]]) -> Command:
         command = self
-        for value in values:
+        for value in _tokens(values):
             command = command.option(name, value)
         return command
 
     def multiple(self, name: str, values: Iterable[str | os.PathLike[str]]) -> Command:
-        tokens = tuple(_token(value) for value in values)
+        tokens = _tokens(values)
         return self.positional(name, *tokens) if tokens else self
 
     def passthrough(self, values: Sequence[str], *, separator: bool = False) -> Command:
         """Preserve argv. Add -- only if the destination supports it."""
-        return self.positional(*(("--",) if separator else ()), *values)
+        tokens = _tokens(values)
+        return self.positional(*(("--",) if separator else ()), *tokens)
 
 
 @dataclass(frozen=True)
