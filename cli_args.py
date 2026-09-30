@@ -85,6 +85,13 @@ def _token(value: Any) -> str:
     return value
 
 
+def _tokens(values: Iterable[str | os.PathLike[str]]) -> tuple[str, ...]:
+    """Validate a token collection without treating one scalar token as an iterable."""
+    if isinstance(values, (str, os.PathLike)):
+        raise TypeError("argv token collections must not be a single string or path")
+    return tuple(_token(value) for value in values)
+
+
 @dataclass(frozen=True)
 class Command:
     """Immutable argv builder. Order is explicit; no shell quoting or splitting."""
