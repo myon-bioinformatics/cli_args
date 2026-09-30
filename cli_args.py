@@ -208,6 +208,7 @@ def pytest_command(paths: Sequence[str] = (), *, quiet: bool = False,
     """Optional preset: pytest is an external runtime dependency, never imported."""
     if tb is not None and tb not in ("auto", "long", "short", "line", "native", "no"):
         raise ValueError("unsupported pytest traceback style")
+    path_tokens = _tokens(paths)
     return (Command((sys.executable if python is None else python, "-m", "pytest"))
             .flag("-q", quiet).option("--tb", tb).flag("-ra", summary)
-            .passthrough(extra).positional(*paths))
+            .passthrough(extra).positional(*path_tokens))
