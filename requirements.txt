@@ -1,0 +1,2 @@
+# Test dependency only; cli_args.py has no third-party dependencies.
+pytest>=8
