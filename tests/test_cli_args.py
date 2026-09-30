@@ -87,6 +87,22 @@ def test_bool_not_truthy_string():
         Command(("tool",)).flag("-q", "false")
 
 
+def test_sequence_apis_reject_scalar_strings_and_paths(tmp_path):
+    command = Command(("tool",))
+    with pytest.raises(TypeError):
+        command.repeated("-H", "abc")
+    with pytest.raises(TypeError):
+        command.multiple("--files", "abc")
+    with pytest.raises(TypeError):
+        command.passthrough("abc")
+    with pytest.raises(TypeError):
+        command.multiple("--files", tmp_path / "abc")
+    with pytest.raises(TypeError):
+        pytest_command("tests")
+    with pytest.raises(TypeError):
+        pytest_command(extra="-q")
+
+
 def test_actual_argv_roundtrip_without_shell(tmp_path):
     sentinel = tmp_path / "should-not-exist"
     values = ["", "日本 語", "a b", "-x", "quote'\"", "$(touch " + str(sentinel) + ")", "; echo bad"]
