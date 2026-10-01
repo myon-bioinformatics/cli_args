@@ -89,19 +89,21 @@ python -S examples/run_cli.py --format json --output result.json --timeout 30 --
 | Python / argparse | Host-real (3.10 / 3.12 / 3.14) | 真偽値・choices・required・排他・条件付き必須・不正入力、stdlib-only `python -S` import |
 | subprocess | Host-real | 空白・日本語・空文字・leading hyphen・shell風文字列・cwd・env・非ゼロ・timeout・不正UTF-8 |
 | pytest | Host-real | 複数file、`-q`、`--tb short`、`-k "a or b"`、明示 `--`、失敗結果 |
-| Git | Host-real + Container-real | temp repo、`-C`、`add --`、leading-hyphen/space/Unicode path、`ls-files -z` |
-| curl | Host-real + Container-real | local HTTP、repeated header、empty option value、Unicode URL/output path、HTTP failure |
-| ls/coreutils | Host-real + Container-real | 複数flag、明示 `--`、leading-hyphen/space/Unicode filename |
+| Git | Host-real + Container-real + Construct-only | temp repo、`-C`、`add --`、leading-hyphen/space/Unicode path、`ls-files -z`、`status --porcelain=v2 -z --branch`、`for-each-ref --format=...%00 --sort=...` を実測。`--pathspec-from-file=- --pathspec-file-nul` と `cat-file --batch-command --buffer -Z` は stdin/batch I/O 未実装のため exact argv のみ固定 |
+| curl | Host-real + Container-real | local HTTP、repeated header、empty option value、Unicode URL/output path、HTTP failureに加え、`--fail-with-body` でbodyを残したままexit 22、`--fail-early` の複数transfer停止、`--write-out %{http_code}` を実測 |
+| ls/coreutils | Host-real + Container-real | `ls` の複数flag・明示 `--`・leading-hyphen/space/Unicode filenameに加え、GNU `sort -z --stable` のNUL区切りrecord処理を実測 |
 | journalctl | Container-real + Construct-only | container内で実binary/versionを実行。repeated `-u` / since / until / `-n` / no-pager のexact argvを固定 |
 | journal/systemd backing service | **未測定** | default CI imageはsystemd PID 1/journal serviceを起動しないため System-service-real を主張しない |
 | Docker | Host-real → Container-real | hostの `cli_args.Command` からlocal build済みimageへ `--`・空文字・leading hyphen・space・Unicode argvをexact transport |
 | Docker Compose | Host-real | local build済みimageだけを参照し、repeated `-f` + `config --services` を実行。registry/networkは不要 |
 | Node / npm | Host-real | temp package + local JS probeで `npm run ... -- <args>` のspace/Unicode/leading-hyphen/attached-option transportを実測 |
 | Playwright CLI shape | Construct-only | orgで実際に使うdirect Node CLI形を固定し、greedyな `--project value` を避け `--project=value` + `--grep` + spec順序を検証。real browser/parser証拠はbrowser-test-kit側 |
-| gh | Host-real binary + Construct-only/stub | `gh --version` は実binary。subcommand/API、repeated header、`--jq` のexact argvを固定。live auth/networkは未測定 |
+| gh | Host-real binary + Construct-only/stub | `gh --version` は実binary。API subcommand、repeated header、`--jq`、`--paginate --slurp`、`--cache 1h`、typed `-F` / raw `-f` fieldのexact argvを固定。live auth/networkは未測定 |
 | Flutter / Dart | Construct-only | `flutter build web -t ... --dart-define=...`、`dart run ... --output ...` の代表argvを固定。bootstrap/build実測はFlutter repo側 |
 | FFmpeg | Container-real | test-only imageにFFmpegを明示導入し、lavfiの極小音源を `-f lavfi -i ... -f null -` で処理。複数option/valueと特殊な `-` 出力を実測 |
 | uv | Construct-only | orgのPython matrixで使う `uv run --no-project --python ... --with ... python -m pytest` のnested argvを固定 |
+
+AI coding向けには、人間向け表示をparseするよりも **machine-readable / NUL-safe / fail-fast / structured-field** な既存CLI契約を優先します。Git porcelain v2・`-z`/`%00`、curlの診断系、gh API paginationのような「地味だが壊れにくい」引数は積極的に回帰証拠へ取り込みます。一方、stdin/batch protocolを必要とする便利機能は、実行primitiveが無い段階ではConstruct-onlyと明示し、実測済みとは扱いません。
 
 Host Python matrixは速いcore contractに限定し、Docker/systemd stateへ依存しません。Docker integration laneは `tests/docker/Dockerfile` の test-only image (`python:3.14.0-slim-bookworm`) をbuildし、host側のDocker transport/Compose検証とは別に、その中で同じ `cli_args.py` と pytest harnessを使ってGit/curl/ls/journalctl/FFmpegを検証します。`CLI_ARGS_CONTAINER_REAL=1` は test image 自体に埋め込まれ、CIや利用者が手動で切り替える必要はありません。Host matrixではそのmarkerが存在しないためcontainer-real suiteは自動skipし、Docker image内では自動有効になります。container-real suite は独立JUnitとして保存し、外側テスト1件へ証跡を畳み込みません。Docker image内のapt/pip依存はテスト基盤専用であり、`cli_args.py` のruntime依存ではありません。
 
