@@ -2,6 +2,7 @@ from contextlib import contextmanager
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+import os
 import shutil
 from threading import Thread
 from urllib.parse import quote
@@ -9,6 +10,13 @@ from urllib.parse import quote
 import pytest
 
 from cli_args import Command, run_command
+
+
+if os.environ.get("CLI_ARGS_CONTAINER_REAL") != "1":
+    pytest.skip(
+        "container-real suite runs only inside the explicit Docker integration boundary",
+        allow_module_level=True,
+    )
 
 
 def available(name):
