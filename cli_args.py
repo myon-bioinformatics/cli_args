@@ -31,6 +31,12 @@ class Argument:
     names: tuple[str, ...]
     kwargs: Mapping[str, Any] = field(default_factory=dict)
 
+    def __post_init__(self) -> None:
+        names = _tokens(self.names)
+        if not names:
+            raise ValueError("at least one argument name is required")
+        object.__setattr__(self, "names", names)
+
 
 def make_parser(arguments: Iterable[Argument] = (), **kwargs: Any) -> argparse.ArgumentParser:
     """Create a parser; option abbreviation is disabled unless requested."""
@@ -43,7 +49,8 @@ def make_parser(arguments: Iterable[Argument] = (), **kwargs: Any) -> argparse.A
 
 def parse_args(arguments: Iterable[Argument] = (), argv: Sequence[str] | None = None,
                **kwargs: Any) -> argparse.Namespace:
-    return make_parser(arguments, **kwargs).parse_args(argv)
+    tokens = None if argv is None else _tokens(argv)
+    return make_parser(arguments, **kwargs).parse_args(tokens)
 
 
 def positive_seconds(value: str) -> float:
@@ -71,7 +78,8 @@ def require_when(parser: argparse.ArgumentParser, args: argparse.Namespace, *,
                  when: bool, required: Sequence[str]) -> None:
     """Require non-None destinations when a condition holds. False/0 are values."""
     if when:
-        missing = [name for name in required if getattr(args, name, None) is None]
+        required_names = _tokens(required)
+        missing = [name for name in required_names if getattr(args, name, None) is None]
         if missing:
             parser.error("required for this mode: " + ", ".join(missing))
 
