@@ -5,7 +5,7 @@ import socket
 import subprocess
 import sys
 import time
-from urllib.request import urlopen
+import http.client
 
 from cli_args import Command, run_command
 
@@ -101,9 +101,15 @@ def test_http_server_real_localhost(tmp_path):
         deadline = time.monotonic() + 10
         while True:
             try:
-                with urlopen(f"http://127.0.0.1:{port}/hello.txt", timeout=1) as response:
+                connection = http.client.HTTPConnection("127.0.0.1", port, timeout=1)
+                connection.request("GET", "/hello.txt")
+                response = connection.getresponse()
+                try:
+                    assert response.status == 200
                     assert response.read().decode("utf-8") == "stdlib-server\n"
-                    break
+                finally:
+                    connection.close()
+                break
             except OSError:
                 if process.poll() is not None:
                     raise AssertionError("python -m http.server exited before serving")
