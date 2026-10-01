@@ -95,11 +95,11 @@ python -S examples/run_cli.py --format json --output result.json --timeout 30 --
 | FFmpeg | Container-real | test-only imageにFFmpegを明示導入し、lavfiの極小音源を `-f lavfi -i ... -f null -` で処理。複数option/valueと特殊な `-` 出力を実測 |
 | uv | Construct-only | orgのPython matrixで使う `uv run --no-project --python ... --with ... python -m pytest` のnested argvを固定 |
 
-Host Python matrixは速いcore contractに限定し、Docker/systemd stateへ依存しません。Docker integration laneは `tests/docker/Dockerfile` の test-only image (`python:3.14.0-slim-bookworm`) をbuildし、その中で同じ `cli_args.py` と pytest harnessを使ってGit/curl/ls/journalctlを検証します。Docker image内のapt/pip依存はテスト基盤専用であり、`cli_args.py` のruntime依存ではありません。
+Host Python matrixは速いcore contractに限定し、Docker/systemd stateへ依存しません。Docker integration laneは `tests/docker/Dockerfile` の test-only image (`python:3.14.0-slim-bookworm`) をbuildし、host側のDocker transport/Compose検証とは別に、その中で同じ `cli_args.py` と pytest harnessを使ってGit/curl/ls/journalctl/FFmpegを検証します。container-real suite は独立JUnitとして保存し、外側テスト1件へ証跡を畳み込みません。Docker image内のapt/pip依存はテスト基盤専用であり、`cli_args.py` のruntime依存ではありません。
 
 Git/curl/ls等がhost環境に無い場合、host-real testcaseは理由付きskipになります。ただしDocker integration laneでは必要binaryをimageに明示的に入れるため、そのlaneではskipを許容しません。外部web siteやlive認証は不要です。
 
-Ubuntu CIではPython 3.10 / 3.12 / 3.14のJUnitに加えてDocker integration JUnitを別artifactとして保存します。さらにWindows/macOSではPython 3.12でstdlib/core contract (`tests/test_cli_args.py`) を実行し、OS固有のsubprocess/path/newline差を軽量に検証します。全6 reportをshared exact-report collectorへ渡します。**argvを構築できること、stubへ渡せること、real CLIが動いたこと、live/service integrationまで測ったことは別契約です。** Windows/macOSのcore Python contractは実測します。live認証付きgh、real Playwright browser/parser、Flutter/Dart bootstrap/build、xprobe、systemd-backed journal serviceはこの初期版では未検証です。
+Ubuntu CIではPython 3.10 / 3.12 / 3.14のJUnitに加えてDocker integration JUnitを別artifactとして保存します。さらにWindows/macOSではPython 3.12でstdlib/core contract (`tests/test_cli_args.py`) を実行し、OS固有のsubprocess/path/newline差を軽量に検証します。host Python 3件、Docker transport/Compose 1件、container-real CLI 1件、Windows/macOS core 2件の**全7 report**をshared exact-report collectorへ渡します。**argvを構築できること、stubへ渡せること、real CLIが動いたこと、live/service integrationまで測ったことは別契約です。** Windows/macOSのcore Python contractは実測します。live認証付きgh、real Playwright browser/parser、Flutter/Dart bootstrap/build、xprobe、systemd-backed journal serviceはこの初期版では未検証です。
 
 ```bash
 python -m pip install -r tests/requirements.txt
