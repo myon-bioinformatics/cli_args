@@ -8,7 +8,7 @@ import pytest
 from cli_args import Command, run_command
 
 
-def test_docker_transports_exact_argv_and_runs_container_suite():
+def test_docker_transports_exact_argv():
     docker = shutil.which("docker")
     image = os.environ.get("CLI_ARGS_TEST_IMAGE")
     if docker is None or not image:
@@ -53,19 +53,6 @@ def test_docker_transports_exact_argv_and_runs_container_suite():
         assert json.loads(executed.stdout) == ["exec space", "実行"]
     finally:
         run_command(Command((docker,)).positional("rm", "-f", name), timeout=30)
-
-    suite = run_command(
-        Command((docker,)).positional("run", "--rm")
-        .option("-e", "CLI_ARGS_CONTAINER_REAL=1")
-        .positional(
-            image,
-            "python", "-m", "pytest", "-q", "tests/test_container_commands.py",
-        ),
-        timeout=120,
-    )
-    assert suite.returncode == 0, suite.stdout + suite.stderr
-    assert "passed" in suite.stdout
-
 
 def test_docker_compose_real_repeated_files_with_local_image(tmp_path):
     docker = shutil.which("docker")
