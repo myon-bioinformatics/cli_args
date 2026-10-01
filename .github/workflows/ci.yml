@@ -37,15 +37,30 @@ jobs:
       - run: python -m pip install -r tests/requirements.txt
       - name: Build CLI integration image
         run: docker build -f tests/docker/Dockerfile -t cli-args-test:ci .
-      - name: Verify Docker transport and container-real CLI suite
+      - name: Verify Docker transport and Compose grammar
         env:
           CLI_ARGS_TEST_IMAGE: cli-args-test:ci
         run: python -m pytest -q -ra --tb=short tests/test_docker_integration.py --junitxml=test-results/docker-integration.xml
+      - name: Run container-real CLI suite
+        run: >-
+          docker run --rm
+          -e CLI_ARGS_CONTAINER_REAL=1
+          -v "$PWD/test-results:/reports"
+          cli-args-test:ci
+          python -m pytest -q -ra --tb=short tests/test_container_commands.py
+          --junitxml=/reports/container-real.xml
       - uses: actions/upload-artifact@v7
         if: always()
         with:
           name: junit-docker-integration
           path: test-results/docker-integration.xml
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: junit-container-real
+          path: test-results/container-real.xml
           if-no-files-found: error
           retention-days: 14
 
@@ -84,6 +99,6 @@ jobs:
       actions: read
     uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-junit-identity.yml@4dfda95d6573250477f991a0421fa6acb9bc0258
     with:
-      expected-reports: '["junit-py3.10/pytest-3.10.xml","junit-py3.12/pytest-3.12.xml","junit-py3.14/pytest-3.14.xml","junit-docker-integration/docker-integration.xml","junit-core-windows/core-windows.xml","junit-core-macos/core-macos.xml"]'
+      expected-reports: '["junit-py3.10/pytest-3.10.xml","junit-py3.12/pytest-3.12.xml","junit-py3.14/pytest-3.14.xml","junit-docker-integration/docker-integration.xml","junit-container-real/container-real.xml","junit-core-windows/core-windows.xml","junit-core-macos/core-macos.xml"]'
       artifact-pattern: "junit-*"
       output-artifact: failure-identity
