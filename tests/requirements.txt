@@ -1,0 +1,2 @@
+# Test-only dependencies. cli_args.py itself remains standard-library-only.
+pytest>=8
