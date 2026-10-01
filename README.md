@@ -75,6 +75,14 @@ python -S examples/run_cli.py --format json --output result.json --timeout 30 --
 
 詳細と「外部ツールを入れる前に確認する標準機能」は [docs/stdlib-command-surface.md](docs/stdlib-command-surface.md) を参照してください。
 
+## 標準ライブラリの関数・型を先に使う
+
+`python -m` よりさらに下には、独自helperや小規模依存を作る前に使えるstdlibの関数・型があります。特に `print` / `pprint` / `textwrap` / `shlex` / `pathlib` / `tempfile` / `collections` / `itertools` / `functools` / `contextlib` / `difflib` / `csv` / `configparser` / `hashlib` / `urllib.parse` を「よく自作される小物」の候補として先に確認します。
+
+独自aliasを増やすのではなく、本来のAPIをそのまま使います。wrapperを作るのは、bounds・encoding policy・domain validation・provenance・error taxonomyなど**追加の契約**がある場合だけです。
+
+詳細は [docs/stdlib-function-surface.md](docs/stdlib-function-surface.md) を参照してください。
+
 ## 検証範囲
 
 証拠レベルを混同しません。
