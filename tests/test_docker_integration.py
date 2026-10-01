@@ -35,6 +35,16 @@ def test_docker_transports_exact_argv():
     )
     assert (inspected.returncode, inspected.stdout.strip()) == (0, "/workspace")
 
+    env_probe = run_command(
+        Command((docker,))
+        .positional("inspect")
+        .option("--format", "{{range .Config.Env}}{{println .}}{{end}}")
+        .positional(image),
+        timeout=30,
+    )
+    assert env_probe.returncode == 0, env_probe.stderr
+    assert "CLI_ARGS_CONTAINER_REAL=1" in env_probe.stdout.splitlines()
+
     name = "cli-args-" + uuid.uuid4().hex[:12]
     started = run_command(
         Command((docker,)).positional("run", "-d", "--rm", "--name", name, image, "sleep", "60"),
