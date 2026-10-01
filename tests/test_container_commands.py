@@ -114,3 +114,19 @@ def test_journalctl_container_real_and_service_boundary():
         "-n", "5",
         "--no-pager",
     )
+
+
+def test_ffmpeg_container_real_lavfi_to_null():
+    ffmpeg = available("ffmpeg")
+    command = (
+        Command((ffmpeg,))
+        .flag("-hide_banner")
+        .flag("-nostdin")
+        .option("-loglevel", "error")
+        .option("-f", "lavfi")
+        .option("-i", "sine=frequency=440:duration=0.05")
+        .option("-f", "null")
+        .positional("-")
+    )
+    result = run_command(command, timeout=30)
+    assert result.returncode == 0, result.stderr
