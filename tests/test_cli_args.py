@@ -151,7 +151,7 @@ def test_failure_stderr_cwd_env(tmp_path):
         "print('failure',file=sys.stderr); sys.exit(7)")), cwd=tmp_path, env={"CLI_TEST": "yes"})
     assert result.returncode == 7
     assert result.stdout.splitlines() == [str(tmp_path), "yes"]
-    assert result.stderr == "failure\n"
+    assert result.stderr.splitlines() == ["failure"]
 
 
 def test_timeout_partial_output():
