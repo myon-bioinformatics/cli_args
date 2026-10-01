@@ -92,7 +92,7 @@ python -S examples/run_cli.py --format json --output result.json --timeout 30 --
 | Playwright CLI shape | Construct-only | orgで実際に使うdirect Node CLI形を固定し、greedyな `--project value` を避け `--project=value` + `--grep` + spec順序を検証。real browser/parser証拠はbrowser-test-kit側 |
 | gh | Host-real binary + Construct-only/stub | `gh --version` は実binary。subcommand/API、repeated header、`--jq` のexact argvを固定。live auth/networkは未測定 |
 | Flutter / Dart | Construct-only | `flutter build web -t ... --dart-define=...`、`dart run ... --output ...` の代表argvを固定。bootstrap/build実測はFlutter repo側 |
-| FFmpeg | Host-real | lavfiの極小音源を `-f lavfi -i ... -f null -` で処理し、複数option/valueと特殊な `-` 出力を実測 |
+| FFmpeg | Container-real | test-only imageにFFmpegを明示導入し、lavfiの極小音源を `-f lavfi -i ... -f null -` で処理。複数option/valueと特殊な `-` 出力を実測 |
 | uv | Construct-only | orgのPython matrixで使う `uv run --no-project --python ... --with ... python -m pytest` のnested argvを固定 |
 
 Host Python matrixは速いcore contractに限定し、Docker/systemd stateへ依存しません。Docker integration laneは `tests/docker/Dockerfile` の test-only image (`python:3.14.0-slim-bookworm`) をbuildし、その中で同じ `cli_args.py` と pytest harnessを使ってGit/curl/ls/journalctlを検証します。Docker image内のapt/pip依存はテスト基盤専用であり、`cli_args.py` のruntime依存ではありません。
