@@ -229,3 +229,37 @@ def test_construct_only_flutter_and_dart_argv():
         "dart", "run", "tool/dev.dart", "bundle",
         "--output", "build/my diagnostics.zip",
     )
+
+
+def test_ffmpeg_real_lavfi_to_null():
+    ffmpeg = available("ffmpeg")
+    command = (
+        Command((ffmpeg,))
+        .flag("-hide_banner")
+        .flag("-nostdin")
+        .option("-loglevel", "error")
+        .option("-f", "lavfi")
+        .option("-i", "sine=frequency=440:duration=0.05")
+        .option("-f", "null")
+        .positional("-")
+    )
+    result = run_command(command, timeout=30)
+    assert result.returncode == 0, result.stderr
+
+
+def test_construct_only_uv_nested_python_pytest_argv():
+    command = (
+        Command(("uv",))
+        .positional("run")
+        .flag("--no-project")
+        .option("--python", "3.12")
+        .repeated("--with", ["pytest", "pytest-cov"])
+        .positional("python", "-m", "pytest", "-q", "tests")
+    )
+    assert command.argv == (
+        "uv", "run", "--no-project",
+        "--python", "3.12",
+        "--with", "pytest",
+        "--with", "pytest-cov",
+        "python", "-m", "pytest", "-q", "tests",
+    )
