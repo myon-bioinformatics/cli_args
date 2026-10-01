@@ -72,11 +72,13 @@ def test_command_order_and_values():
     assert command.argv == ("tool", "-q", "--empty", "", "--pattern=-x",
                             "-H", "A: b", "-H", "C: d", "--files", "a", "b")
     assert base.multiple("--files", []).argv == base.argv
+    assert base.passthrough(["-file"]).argv == ("tool", "-file")
     assert base.passthrough(["-file"], separator=True).argv == ("tool", "--", "-file")
 
 
 @pytest.mark.parametrize("argv,error", [((), ValueError), (("",), ValueError),
-                                       (("tool", "a\0b"), ValueError), (("tool", 2), TypeError)])
+                                       (("tool", "a\0b"), ValueError), (("tool", 2), TypeError),
+                                       ("git status", TypeError), (Path("git"), TypeError)])
 def test_bad_argv(argv, error):
     with pytest.raises(error):
         Command(argv)
