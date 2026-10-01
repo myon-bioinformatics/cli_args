@@ -14,15 +14,16 @@ def test_docker_transports_exact_argv_and_runs_container_suite():
         pytest.skip("Docker integration image is not configured")
 
     values = ["", "-leading", "space value", "日本語"]
+    transported = ["--", *values]
     probe = (
         Command((docker,))
         .positional("run", "--rm", image, "python", "-S", "-c",
-                    "import json,sys; print(json.dumps(sys.argv[1:], ensure_ascii=False))", "--")
-        .passthrough(values)
+                    "import json,sys; print(json.dumps(sys.argv[1:], ensure_ascii=False))")
+        .passthrough(transported)
     )
     result = run_command(probe, timeout=30)
     assert result.returncode == 0, result.stderr
-    assert json.loads(result.stdout) == values
+    assert json.loads(result.stdout) == transported
 
     suite = run_command(
         Command((docker,)).positional(
