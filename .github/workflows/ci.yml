@@ -81,7 +81,7 @@ jobs:
           python-version: '3.12'
       - run: python -m pip install -r tests/requirements.txt
       - run: python -S -c "import cli_args; assert cli_args.__all__"
-      - run: python -m pytest -q -ra --tb=short tests/test_cli_args.py --junitxml=test-results/core-${{ matrix.os }}.xml
+      - run: python -m pytest -q -ra --tb=short tests/test_cli_args.py tests/test_stdlib_commands.py --junitxml=test-results/core-${{ matrix.os }}.xml
       - uses: actions/upload-artifact@v7
         if: always()
         with:
