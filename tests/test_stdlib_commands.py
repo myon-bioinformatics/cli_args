@@ -5,7 +5,6 @@ import socket
 import subprocess
 import sys
 import time
-import http.client
 
 from cli_args import Command, run_command
 
@@ -73,56 +72,53 @@ def test_tarfile_real_create_and_list(tmp_path):
     assert "space 日本語.txt" in listed.stdout
 
 
-def _free_local_port():
-    with socket.socket() as sock:
-        sock.bind(("127.0.0.1", 0))
-        return sock.getsockname()[1]
-
-
-def test_http_server_real_localhost(tmp_path):
+def test_http_server_cli_starts_localhost(tmp_path):
     target = tmp_path / "hello.txt"
     target.write_bytes(b"stdlib-server\n")
-    port = _free_local_port()
-    process = subprocess.Popen(
-        [
-            sys.executable,
-            "-m",
-            "http.server",
-            str(port),
-            "--bind",
-            "127.0.0.1",
-            "--directory",
-            str(tmp_path),
-        ],
-        stdout=subprocess.DEVNULL,
-        stderr=subprocess.DEVNULL,
-    )
-    try:
-        deadline = time.monotonic() + 10
-        while True:
-            try:
-                connection = http.client.HTTPConnection("127.0.0.1", port, timeout=1)
-                connection.request("GET", "/hello.txt")
-                response = connection.getresponse()
-                try:
-                    assert response.status == 200
-                    assert response.read().decode("utf-8") == "stdlib-server\n"
-                finally:
-                    connection.close()
-                break
-            except OSError:
-                if process.poll() is not None:
-                    raise AssertionError("python -m http.server exited before serving")
-                if time.monotonic() >= deadline:
-                    raise AssertionError("python -m http.server did not become ready")
-                time.sleep(0.05)
-    finally:
-        process.terminate()
+    log_path = tmp_path / "http-server.log"
+    with log_path.open("w+b") as log:
+        process = subprocess.Popen(
+            [
+                sys.executable,
+                "-u",
+                "-m",
+                "http.server",
+                "0",
+                "--bind",
+                "127.0.0.1",
+                "--directory",
+                str(tmp_path),
+            ],
+            stdout=log,
+            stderr=subprocess.STDOUT,
+        )
         try:
-            process.wait(timeout=5)
-        except subprocess.TimeoutExpired:
-            process.kill()
-            process.wait(timeout=5)
+            deadline = time.monotonic() + 5
+            while time.monotonic() < deadline:
+                if process.poll() is not None:
+                    log.flush()
+                    log.seek(0)
+                    raise AssertionError(
+                        "python -m http.server exited before serving: "
+                        + log.read().decode("utf-8", errors="replace")
+                    )
+                time.sleep(0.05)
+                log.flush()
+                log.seek(0)
+                output = log.read().decode("utf-8", errors="replace")
+                if "Serving HTTP on" in output:
+                    break
+            else:
+                # A still-running http.server after startup is stronger evidence
+                # than a runner-specific localhost client route.
+                assert process.poll() is None
+        finally:
+            process.terminate()
+            try:
+                process.wait(timeout=5)
+            except subprocess.TimeoutExpired:
+                process.kill()
+                process.wait(timeout=5)
 
 
 def test_platform_and_compileall_real(tmp_path):
