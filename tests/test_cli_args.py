@@ -89,7 +89,7 @@ def test_bool_not_truthy_string():
         Command(("tool",)).flag("-q", "false")
 
 
-def test_sequence_apis_reject_scalar_strings_and_paths(tmp_path):
+def test_sequence_apis_reject_scalar_unordered_and_streaming_inputs(tmp_path):
     command = Command(("tool",))
     with pytest.raises(TypeError):
         command.repeated("-H", "abc")
@@ -103,6 +103,17 @@ def test_sequence_apis_reject_scalar_strings_and_paths(tmp_path):
         pytest_command("tests")
     with pytest.raises(TypeError):
         pytest_command(extra="-q")
+    for values in ({"b", "a"}, {"a": "b"}, (value for value in ["a", "b"])):
+        with pytest.raises(TypeError):
+            command.repeated("-H", values)
+        with pytest.raises(TypeError):
+            command.multiple("--files", values)
+        with pytest.raises(TypeError):
+            command.passthrough(values)
+    with pytest.raises(TypeError):
+        pytest_command(paths={"a", "b"})
+    with pytest.raises(TypeError):
+        pytest_command(extra=(value for value in ["-q"]))
 
 
 def test_actual_argv_roundtrip_without_shell(tmp_path):
@@ -157,6 +168,8 @@ def test_output_json_file_and_stream(tmp_path):
     target = tmp_path / "result.json"
     write_output(result, format="json", output=target)
     payload = json.loads(target.read_text(encoding="utf-8"))
+    assert target.read_bytes().endswith(b"}\n")
+    assert b"\r\n" not in target.read_bytes()
     assert payload == {"argv": ["tool", "日本 語"], "returncode": 3, "stdout": "output",
                        "stderr": "error", "executed": True, "timed_out": False}
     stream = io.StringIO()
@@ -177,7 +190,7 @@ def test_import_under_python_s_has_no_side_effects():
     assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
 
 
-def test_example_boundary_and_exit_codes():
+def test_example_boundary_and_exit_codes(tmp_path):
     runner = Command((sys.executable, "-S", str(ROOT / "examples/run_cli.py")))
     result = run_command(runner.positional("--format", "json", "--", sys.executable,
                                          "-S", "-c", "import sys; sys.exit(6)"))
@@ -186,6 +199,14 @@ def test_example_boundary_and_exit_codes():
     assert run_command(runner.positional("--format", "json")).returncode == 2
     assert run_command(runner.positional("--")).returncode == 2
     assert run_command(runner.positional("--", "cli-args-nonexistent-executable")).returncode == 127
+    missing_output = tmp_path / "missing-parent" / "result.json"
+    write_failure = run_command(runner.positional(
+        "--format", "json", "--output", missing_output, "--",
+        sys.executable, "-S", "-c", "print('done')"))
+    assert write_failure.returncode == 1
+    assert "failed to write output:" in write_failure.stderr
+    assert "Traceback" not in write_failure.stderr
+    assert not missing_output.exists()
 
 
 def test_pytest_preset():
