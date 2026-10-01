@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 import socket
 import subprocess
@@ -42,6 +43,7 @@ def test_zipfile_real_create_and_list(tmp_path):
         Command((sys.executable, "-m", "zipfile", "-l", archive)),
         cwd=tmp_path,
         timeout=30,
+        env={**os.environ, "PYTHONIOENCODING": "utf-8"},
     )
     assert listed.returncode == 0, listed.stderr
     assert "a file.txt" in listed.stdout
@@ -65,6 +67,7 @@ def test_tarfile_real_create_and_list(tmp_path):
         Command((sys.executable, "-m", "tarfile", "-l", archive)),
         cwd=tmp_path,
         timeout=30,
+        env={**os.environ, "PYTHONIOENCODING": "utf-8"},
     )
     assert listed.returncode == 0, listed.stderr
     assert "space 日本語.txt" in listed.stdout
@@ -78,7 +81,7 @@ def _free_local_port():
 
 def test_http_server_real_localhost(tmp_path):
     target = tmp_path / "hello.txt"
-    target.write_text("stdlib-server\n", encoding="utf-8")
+    target.write_bytes(b"stdlib-server\n")
     port = _free_local_port()
     process = subprocess.Popen(
         [
