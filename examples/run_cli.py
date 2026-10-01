@@ -25,7 +25,11 @@ def main(argv=None):
     except OSError as exc:
         print(str(exc), file=sys.stderr)
         return 127 if isinstance(exc, FileNotFoundError) else 1
-    write_output(result, format=args.format, output=args.output)
+    try:
+        write_output(result, format=args.format, output=args.output)
+    except OSError as exc:
+        print("failed to write output: " + str(exc), file=sys.stderr)
+        return 1
     if args.format == "text" and result.stderr:
         sys.stderr.write(result.stderr)
     if result.timed_out:
