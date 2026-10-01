@@ -43,7 +43,7 @@ write_output(result, format="json")
 | `repeated(name, values)` | `-H value1 -H value2` のように繰り返す。`values` は複数トークンの collection 専用 |
 | `multiple(name, values)` | `--files a b` のように並べる。`values` は複数トークンの collection 専用 |
 | `positional(*values)` | 指定順に位置引数を追加 |
-| `passthrough(values, separator=True)` | `--` を追加して渡す。`values` は複数トークンの collection 専用 |
+| `passthrough(values, separator=False)` | argv をそのまま追加。`separator=True` のときだけ先頭に `--` を追加。`values` は複数トークンの collection 専用 |
 
 コマンドごとの意味や有効な組み合わせは呼び出し側で定義します。引数は文字列またはテキストパスで渡し、数値は明示的に文字列化します。シェル展開・引用符の解釈・文字列の分割は行いません。`repeated()` / `multiple()` / `passthrough()` の collection 引数に単一の `str` / `PathLike` を渡すと、文字単位・パス断片への暗黙展開を防ぐため `TypeError` になります。1トークンだけ追加したい場合は `option()` / `positional()` を使います。
 
