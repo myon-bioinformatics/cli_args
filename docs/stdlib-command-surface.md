@@ -82,3 +82,18 @@ The fuller cross-repository cookbook originated in `browser-test-kit/docs/python
 When a downstream repository repeatedly installs a tool for something already covered by a measured stdlib command, prefer documenting or reusing the stdlib route before creating another wrapper.
 
 When an external tool has the stronger domain contract—Git, Docker, Playwright, FFmpeg, Flutter, gh, etc.—use that real tool instead of imitating it with Python.
+
+
+## Windows text/console note
+
+The stdlib command itself may be portable while its terminal encoding is not. On the GitHub Windows runner, `python -m zipfile -l` with a Japanese filename failed under the default cp1252 stdout encoding, and `tarfile -l` escaped the same name. The command works when Python stdout is explicitly UTF-8:
+
+```powershell
+$env:PYTHONIOENCODING = "utf-8"
+python -m zipfile -l bundle.zip
+python -m tarfile -l bundle.tar
+```
+
+The repository's tests set `PYTHONIOENCODING=utf-8` only for these subprocesses while preserving the rest of the environment. This is an evidence-layer portability setting, not a dependency and not a change to `cli_args.py`.
+
+Likewise, text files created with platform-default newline translation can differ before `http.server` ever sees them. The HTTP server fixture writes explicit bytes so the test measures the server rather than `Path.write_text` newline policy.
