@@ -87,13 +87,17 @@ python -S examples/run_cli.py --format json --output result.json --timeout 30 --
 | journalctl | Container-real + Construct-only | container内で実binary/versionを実行。repeated `-u` / since / until / `-n` / no-pager のexact argvを固定 |
 | journal/systemd backing service | **未測定** | default CI imageはsystemd PID 1/journal serviceを起動しないため System-service-real を主張しない |
 | Docker | Host-real → Container-real | hostの `cli_args.Command` からlocal build済みimageへ `--`・空文字・leading hyphen・space・Unicode argvをexact transport |
-| gh | Construct-only/stub | portable subprocess stubでargv transport。live/auth/networkは未測定 |
+| Docker Compose | Host-real | local build済みimageだけを参照し、repeated `-f` + `config --services` を実行。registry/networkは不要 |
+| Node / npm | Host-real | temp package + local JS probeで `npm run ... -- <args>` のspace/Unicode/leading-hyphen/attached-option transportを実測 |
+| Playwright CLI shape | Construct-only | orgで実際に使うdirect Node CLI形を固定し、greedyな `--project value` を避け `--project=value` + `--grep` + spec順序を検証。real browser/parser証拠はbrowser-test-kit側 |
+| gh | Host-real binary + Construct-only/stub | `gh --version` は実binary。subcommand/API、repeated header、`--jq` のexact argvを固定。live auth/networkは未測定 |
+| Flutter / Dart | Construct-only | `flutter build web -t ... --dart-define=...`、`dart run ... --output ...` の代表argvを固定。bootstrap/build実測はFlutter repo側 |
 
 Host Python matrixは速いcore contractに限定し、Docker/systemd stateへ依存しません。Docker integration laneは `tests/docker/Dockerfile` の test-only image (`python:3.14.0-slim-bookworm`) をbuildし、その中で同じ `cli_args.py` と pytest harnessを使ってGit/curl/ls/journalctlを検証します。Docker image内のapt/pip依存はテスト基盤専用であり、`cli_args.py` のruntime依存ではありません。
 
 Git/curl/ls等がhost環境に無い場合、host-real testcaseは理由付きskipになります。ただしDocker integration laneでは必要binaryをimageに明示的に入れるため、そのlaneではskipを許容しません。外部web siteやlive認証は不要です。
 
-Ubuntu CIではPython 3.10 / 3.12 / 3.14のJUnitに加えてDocker integration JUnitを別artifactとして成功・失敗を問わず保存し、全4 reportをshared exact-report collectorへ渡します。**argvを構築できること、stubへ渡せること、real CLIが動いたこと、live/service integrationまで測ったことは別契約です。** Windows/macOS、live認証付きgh、Node/Playwright、xprobe、systemd-backed journal serviceはこの初期版では未検証です。
+Ubuntu CIではPython 3.10 / 3.12 / 3.14のJUnitに加えてDocker integration JUnitを別artifactとして保存します。さらにWindows/macOSではPython 3.12でstdlib/core contract (`tests/test_cli_args.py`) を実行し、OS固有のsubprocess/path/newline差を軽量に検証します。全6 reportをshared exact-report collectorへ渡します。**argvを構築できること、stubへ渡せること、real CLIが動いたこと、live/service integrationまで測ったことは別契約です。** Windows/macOSのcore Python contractは実測します。live認証付きgh、real Playwright browser/parser、Flutter/Dart bootstrap/build、xprobe、systemd-backed journal serviceはこの初期版では未検証です。
 
 ```bash
 python -m pip install -r tests/requirements.txt
