@@ -116,6 +116,18 @@ def test_journalctl_container_real_and_service_boundary():
     )
 
 
+def test_coreutils_sort_zero_terminated_real(tmp_path):
+    sort = available("sort")
+    source = tmp_path / "records.bin"
+    source.write_bytes("b\0a\0日本語\0".encode("utf-8"))
+    result = run_command(
+        Command((sort,)).flag("-z").flag("--stable").positional(source),
+        env={"LC_ALL": "C"},
+    )
+    assert result.returncode == 0
+    assert result.stdout == "a\0b\0日本語\0"
+
+
 def test_ffmpeg_container_real_lavfi_to_null():
     ffmpeg = available("ffmpeg")
     command = (
