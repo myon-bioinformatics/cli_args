@@ -6,6 +6,7 @@ External tools keep their own option semantics; pass their argv unchanged.
 from __future__ import annotations
 
 import argparse
+from collections.abc import Sequence as SequenceABC
 from dataclasses import asdict, dataclass, field
 import json
 import math
@@ -85,10 +86,11 @@ def _token(value: Any) -> str:
     return value
 
 
-def _tokens(values: Iterable[str | os.PathLike[str]]) -> tuple[str, ...]:
-    """Validate a token collection without treating one scalar token as an iterable."""
-    if isinstance(values, (str, os.PathLike)):
-        raise TypeError("argv token collections must not be a single string or path")
+def _tokens(values: Sequence[str | os.PathLike[str]]) -> tuple[str, ...]:
+    """Validate an ordered finite token sequence; reject scalar/unordered iterables."""
+    if (isinstance(values, (str, bytes, bytearray, os.PathLike))
+            or not isinstance(values, SequenceABC)):
+        raise TypeError("argv token collections must be ordered sequences, not scalar or unordered iterables")
     return tuple(_token(value) for value in values)
 
 
@@ -124,13 +126,13 @@ class Command:
         name, value = _token(name), _token(value)
         return self.positional(name + "=" + value) if attached else self.positional(name, value)
 
-    def repeated(self, name: str, values: Iterable[str | os.PathLike[str]]) -> Command:
+    def repeated(self, name: str, values: Sequence[str | os.PathLike[str]]) -> Command:
         command = self
         for value in _tokens(values):
             command = command.option(name, value)
         return command
 
-    def multiple(self, name: str, values: Iterable[str | os.PathLike[str]]) -> Command:
+    def multiple(self, name: str, values: Sequence[str | os.PathLike[str]]) -> Command:
         tokens = _tokens(values)
         return self.positional(name, *tokens) if tokens else self
 
@@ -194,12 +196,12 @@ def render_output(value: Any, *, format: str = "text") -> str:
 def write_output(value: Any, *, format: str = "text",
                  output: str | os.PathLike[str] | None = None,
                  stream: TextIO | None = None) -> None:
-    """Render before writing; files are overwritten, parents are not created."""
+    """Render before writing; files are UTF-8/LF, overwritten, parents are not created."""
     text = render_output(value, format=format)
     if output is None:
         (sys.stdout if stream is None else stream).write(text)
     else:
-        Path(output).write_text(text, encoding="utf-8")
+        Path(output).write_text(text, encoding="utf-8", newline="\n")
 
 
 def pytest_command(paths: Sequence[str] = (), *, quiet: bool = False,
