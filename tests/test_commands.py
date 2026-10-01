@@ -39,12 +39,14 @@ def test_pytest_real_keyword_and_explicit_separator(tmp_path):
         "def test_other(): assert False\n",
         encoding="utf-8",
     )
-    command = pytest_command(
-        [target.name],
-        quiet=True,
-        tb="short",
-        summary=True,
-        extra=["--override-ini", "addopts=", "-k", "chosen or absent", "--"],
+    command = (
+        Command((sys.executable, "-m", "pytest"))
+        .flag("-q")
+        .option("--tb", "short", attached=True)
+        .flag("-ra")
+        .option("--override-ini", "addopts=")
+        .option("-k", "chosen or absent")
+        .passthrough([target.name], separator=True)
     )
     result = run_command(command, cwd=tmp_path, timeout=30)
     assert result.returncode == 0, result.stdout + result.stderr
@@ -68,7 +70,8 @@ def test_git_real_repository(tmp_path):
 def test_ls_real_separator_space_unicode_and_leading_hyphen(tmp_path):
     name = "-leading 日本語 file.txt"
     (tmp_path / name).write_text("ok\n", encoding="utf-8")
-    command = Command((available("ls"),)).flag("-1").passthrough([name], separator=True)
+    command = (Command((available("ls"),)).flag("-1").flag("--color=never")
+               .passthrough([name], separator=True))
     result = run_command(command, cwd=tmp_path)
     assert (result.returncode, result.stdout) == (0, name + "\n")
 
