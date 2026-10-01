@@ -18,7 +18,7 @@ args = parse_args([
 ], ["--mode", "read", "--no-enabled", "a.html", "b.html"])
 ```
 
-細かい設定には `make_parser()` の戻り値へ直接 `add_argument()` や `add_mutually_exclusive_group()` を使えます。`require_when(parser, args, when=..., required=["output"])` は条件が成立したとき、値が `None` の項目を `parser.error()` で拒否します。`False` や `0` は指定値として扱います。
+細かい設定には `make_parser()` の戻り値へ直接 `add_argument()` や `add_mutually_exclusive_group()` を使えます。`Argument.names`、明示指定する `parse_args(..., argv=...)`、`require_when(..., required=...)` はいずれも順序を持つ有限の sequence を契約とし、単一文字列や set/dict/generator の暗黙展開を拒否します。`require_when(parser, args, when=..., required=["output"])` は条件が成立したとき、値が `None` の項目を `parser.error()` で拒否します。`False` や `0` は指定値として扱います。
 
 `add_output_arguments(parser)` は `--format text/json` と `--output`、`add_execution_arguments(parser)` は `--dry-run` / `--timeout` / `--cwd` を追加します。必要なセットだけ選び、呼び出し側で名前の衝突を避けてください。
 
