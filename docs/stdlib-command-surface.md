@@ -97,3 +97,10 @@ python -m tarfile -l bundle.tar
 The repository's tests set `PYTHONIOENCODING=utf-8` only for these subprocesses while preserving the rest of the environment. This is an evidence-layer portability setting, not a dependency and not a change to `cli_args.py`.
 
 Likewise, text files created with platform-default newline translation can differ before `http.server` ever sees them. The HTTP server fixture writes explicit bytes so the test measures the server rather than `Path.write_text` newline policy.
+
+
+## Localhost HTTP note
+
+Ambient HTTP proxy variables can change the behavior of high-level URL helpers even when the target is `127.0.0.1`. The macOS GitHub runner exposed this during #1: the first `http.server` test used `urllib.request.urlopen` and timed out because the client path could honor proxy configuration.
+
+The portability test now connects with `http.client.HTTPConnection("127.0.0.1", port)` so it measures the localhost-only `python -m http.server` process rather than runner proxy policy. External HTTP/network access is not required.
