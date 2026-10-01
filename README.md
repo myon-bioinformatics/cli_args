@@ -40,14 +40,14 @@ write_output(result, format="json")
 | `flag(name, enabled)` | boolがTrueのときだけ追加 |
 | `option(name, value)` | 名前と値を追加。Noneは省略、空文字は保持 |
 | `option(..., attached=True)` | `--name=value` を追加。実行先が対応する場合に使用 |
-| `repeated(name, values)` | `-H value1 -H value2` のように繰り返す |
-| `multiple(name, values)` | `--files a b` のように並べる |
+| `repeated(name, values)` | `-H value1 -H value2` のように繰り返す。`values` は複数トークンの collection 専用 |
+| `multiple(name, values)` | `--files a b` のように並べる。`values` は複数トークンの collection 専用 |
 | `positional(*values)` | 指定順に位置引数を追加 |
-| `passthrough(values, separator=True)` | `--` を追加して渡す。実行先が対応する場合に使用 |
+| `passthrough(values, separator=True)` | `--` を追加して渡す。`values` は複数トークンの collection 専用 |
 
-コマンドごとの意味や有効な組み合わせは呼び出し側で定義します。引数は文字列またはテキストパスで渡し、数値は明示的に文字列化します。シェル展開・引用符の解釈・文字列の分割は行いません。
+コマンドごとの意味や有効な組み合わせは呼び出し側で定義します。引数は文字列またはテキストパスで渡し、数値は明示的に文字列化します。シェル展開・引用符の解釈・文字列の分割は行いません。`repeated()` / `multiple()` / `passthrough()` の collection 引数に単一の `str` / `PathLike` を渡すと、文字単位・パス断片への暗黙展開を防ぐため `TypeError` になります。1トークンだけ追加したい場合は `option()` / `positional()` を使います。
 
-`pytest_command(paths, quiet=True, tb="short", summary=True, extra=[...])` は `python -m pytest -q --tb short -ra ...` を構築する任意のプリセットです。pytestを本体からimportせず、自動インストールもしません。
+`pytest_command(paths, quiet=True, tb="short", summary=True, extra=[...])` は `python -m pytest -q --tb short -ra ...` を構築する任意のプリセットです。`paths` と `extra` も collection 専用で、単一の `str` / `PathLike` は拒否します。pytestを本体からimportせず、自動インストールもしません。
 
 ## 実行・出力
 
@@ -78,14 +78,14 @@ python -S examples/run_cli.py --format json --output result.json --timeout 30 --
 | curl | ローカルHTTP記事取得・ヘッダー複数指定・ファイル保存・HTTP 404 | curlが必要 |
 | gh | コマンド構築と模擬子プロセスへのargv受け渡し | 実gh・認証・ネットワークは未検証 |
 
-Git/curlがない環境では該当テストがskipされ、理由を表示します。外部サイトへのアクセスは不要です。Ubuntu CIではPython 3.10 / 3.12 / 3.14で検証し、JUnitを各ジョブのartifactとして成功・失敗を問わず保存します。CIの結果がその環境での証拠となります。Windows/macOS、Node/Playwright、xprobeはこの初期版では未検証です。
+Git/curlがない環境では該当テストがskipされ、理由を表示します。外部サイトへのアクセスは不要です。Ubuntu CIではPython 3.10 / 3.12 / 3.14で検証し、JUnitを各ジョブのartifactとして成功・失敗を問わず保存します。さらに shared exact-report collector を通し、失敗identityの横断形式へ接続します。CIの結果がその環境での証拠となります。**argvを構築できることと、そのツール/OSを実測検証済みであることは別契約です。** Windows/macOS、live認証付きgh、Node/Playwright、xprobeはこの初期版では未検証です。
 
 ```bash
-python -m pip install -r requirements.txt
+python -m pip install -r tests/requirements.txt
 python -S -c "import cli_args"
-python -m pytest -q -ra --tb=short --junitxml=test-results/junit.xml
+python -m pytest -q -ra --tb=short --junitxml=test-results/pytest-local.xml
 ```
 
-`requirements.txt` はテスト依存のみです。本体が `python -S` で動くことと、外部ツールが存在することは別の条件です。pytestは通常の `python -m pytest` で実行します。
+`tests/requirements.txt` が canonical なテスト依存manifestです。root `requirements.txt` は既存のローカル導線を壊さないための test-only compatibility shim で、runtime依存を意味しません。本体が `python -S` で動くことと、外部ツールが存在することは別の条件です。pytestは通常の `python -m pytest` で実行します。
 
 速度ベンチマークではなく「どの利用パターンを再現して検証したか」を記録します。失敗事例は回帰テストへ追加し、実例から共通機能を増やします。HTMLの取得・構造抽出は別のツールへ置き、このファイルの引数・実行・出力機能を利用する想定です。
