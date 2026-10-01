@@ -67,6 +67,57 @@ def test_git_real_repository(tmp_path):
     assert run_command(git.positional("not-a-git-command")).returncode != 0
 
 
+def test_git_machine_readable_porcelain_refs_and_batch_shapes(tmp_path):
+    git = Command((available("git"),)).option("-C", tmp_path)
+    assert run_command(git.positional("init", "--quiet")).returncode == 0
+    assert run_command(git.positional("config", "user.name", "CLI Test")).returncode == 0
+    assert run_command(git.positional("config", "user.email", "cli@example.invalid")).returncode == 0
+
+    tracked = "tracked 日本語.txt"
+    untracked = "untracked space 日本語.txt"
+    (tmp_path / tracked).write_text("one\n", encoding="utf-8")
+    assert run_command(git.positional("add").passthrough([tracked], separator=True)).returncode == 0
+    assert run_command(git.positional("commit", "--quiet", "-m", "initial")).returncode == 0
+    (tmp_path / tracked).write_text("two\n", encoding="utf-8")
+    (tmp_path / untracked).write_text("new\n", encoding="utf-8")
+
+    status = run_command(
+        git.positional("status")
+        .option("--porcelain", "v2", attached=True)
+        .flag("-z")
+        .flag("--branch")
+    )
+    assert status.returncode == 0
+    assert "# branch.head " in status.stdout
+    assert tracked in status.stdout and untracked in status.stdout
+    assert "\0" in status.stdout
+
+    assert run_command(git.positional("branch", "topic/日本語")).returncode == 0
+    refs = run_command(
+        git.positional("for-each-ref")
+        .option("--format", "%(refname:short)%00%(objectname:short)%00", attached=True)
+        .option("--sort", "refname", attached=True)
+        .positional("refs/heads")
+    )
+    assert refs.returncode == 0
+    assert "topic/日本語\0" in refs.stdout
+    assert refs.stdout.count("\0") >= 4
+
+    # These two useful Git batch modes need stdin/batch I/O, which run_command
+    # intentionally does not claim yet. Keep their exact argv shape as
+    # construct-only evidence rather than pretending they were executed.
+    pathspec = (
+        git.positional("add")
+        .option("--pathspec-from-file", "-", attached=True)
+        .flag("--pathspec-file-nul")
+    )
+    assert pathspec.argv[-3:] == (
+        "add", "--pathspec-from-file=-", "--pathspec-file-nul",
+    )
+    cat_file = git.positional("cat-file").flag("--batch-command").flag("--buffer").flag("-Z")
+    assert cat_file.argv[-4:] == ("cat-file", "--batch-command", "--buffer", "-Z")
+
+
 def test_ls_real_separator_space_unicode_and_leading_hyphen(tmp_path):
     name = "-leading 日本語 file.txt"
     (tmp_path / name).write_text("ok\n", encoding="utf-8")
@@ -118,6 +169,29 @@ def test_curl_real_local_http_and_failure(tmp_path):
         assert result.returncode == 0, result.stderr
         assert output.read_text(encoding="utf-8") == "<h1>日本語</h1>"
         assert run_command(curl.positional(url + "/missing"), timeout=10).returncode == 22
+
+
+def test_curl_real_fail_with_body_fail_early_and_write_out(tmp_path):
+    curl = (
+        Command((available("curl"),))
+        .positional("--disable")
+        .flag("--silent")
+        .flag("--show-error")
+        .flag("--fail-with-body")
+        .flag("--fail-early")
+        .option("--noproxy", "*")
+        .option("--max-time", "5")
+        .option("--write-out", "%{http_code}\\n")
+    )
+    (tmp_path / "second.txt").write_text("SECOND-SHOULD-NOT-RUN", encoding="utf-8")
+    with local_server(tmp_path) as url:
+        result = run_command(
+            curl.positional(url + "/missing", url + "/second.txt"),
+            timeout=10,
+        )
+    assert result.returncode == 22
+    assert result.stdout.endswith("404\n")
+    assert "SECOND-SHOULD-NOT-RUN" not in result.stdout
 
 
 def test_gh_mock_transport_records_argv(tmp_path):
@@ -202,6 +276,31 @@ def test_gh_real_binary_and_api_shape():
         "-H", "X-GitHub-Api-Version: 2022-11-28",
         "--jq", ".sha",
         "repos/owner/repo/contents/path with space",
+    )
+
+    paginated = (
+        Command((gh,))
+        .positional("api")
+        .option("--hostname", "github.com")
+        .option("--method", "GET")
+        .flag("--paginate")
+        .flag("--slurp")
+        .option("--cache", "1h")
+        .repeated("-F", ["per_page=100", "active=true"])
+        .repeated("-f", ["q=repo:{owner}/{repo} is:open", "note=value with spaces"])
+        .positional("search/issues")
+    )
+    assert paginated.argv == (
+        gh, "api",
+        "--hostname", "github.com",
+        "--method", "GET",
+        "--paginate", "--slurp",
+        "--cache", "1h",
+        "-F", "per_page=100",
+        "-F", "active=true",
+        "-f", "q=repo:{owner}/{repo} is:open",
+        "-f", "note=value with spaces",
+        "search/issues",
     )
 
 
