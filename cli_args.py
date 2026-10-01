@@ -99,7 +99,7 @@ class Command:
     argv: tuple[str, ...]
 
     def __post_init__(self) -> None:
-        tokens = tuple(_token(value) for value in self.argv)
+        tokens = _tokens(self.argv)
         if not tokens or not tokens[0]:
             raise ValueError("a non-empty executable is required")
         object.__setattr__(self, "argv", tokens)
