@@ -73,7 +73,7 @@ python -S examples/run_cli.py --format json --output result.json --timeout 30 --
 
 代表例は `json.tool`、`zipfile`、`tarfile`、`http.server`、`platform`、`compileall`、`tempfile`。#1では主要例を実際にCIで動かし、単なるcheat sheetにはしません。標準モジュールへ独自aliasを被せず、本来の `python -m module` 名を見せることでPython version/provenanceを曖昧にしません。
 
-詳細と「外部ツールを入れる前に確認する標準機能」は [docs/stdlib-command-surface.md](docs/stdlib-command-surface.md) を参照してください。
+詳細と「外部ツールを入れる前に確認する標準機能」は [docs/stdlib-command-surface.md](docs/stdlib-command-surface.md) を参照してください。\n\nまた、古典CLIから現代CLIまでの「地味だが自動化に強い引数」は [docs/cli-argument-patterns.md](docs/cli-argument-patterns.md) に整理します。公式ドキュメントへの導線、real/construct-only の証拠レベル、NUL-safe・fail-fast・machine-readable といった設計思想を同じ場所で追えるようにします。
 
 ## 標準ライブラリの関数・型を先に使う
 
