@@ -69,16 +69,31 @@ python -S examples/run_cli.py --format json --output result.json --timeout 30 --
 
 ## 検証範囲
 
-| 対象 | テスト内容 | 実行条件 |
-|---|---|---|
-| Python / argparse | 真偽値・choices・required・排他・条件付き必須・不正入力 | Pythonのみ |
-| subprocess | 空白・日本語・空文字・ハイフン・シェル風文字列・cwd・env・非ゼロ・タイムアウト・不正UTF-8 | Pythonのみ |
-| pytest | 複数ファイル・`-q`・`--tb short`・`-ra`・失敗結果 | pytestが必要 |
-| Git | 一時リポジトリでinit/add/ls-files、NUL出力と日本語ファイル名、失敗 | Gitが必要 |
-| curl | ローカルHTTP記事取得・ヘッダー複数指定・ファイル保存・HTTP 404 | curlが必要 |
-| gh | コマンド構築と模擬子プロセスへのargv受け渡し | 実gh・認証・ネットワークは未検証 |
+証拠レベルを混同しません。
 
-Git/curlがない環境では該当テストがskipされ、理由を表示します。外部サイトへのアクセスは不要です。Ubuntu CIではPython 3.10 / 3.12 / 3.14で検証し、JUnitを各ジョブのartifactとして成功・失敗を問わず保存します。さらに shared exact-report collector を通し、失敗identityの横断形式へ接続します。CIの結果がその環境での証拠となります。**argvを構築できることと、そのツール/OSを実測検証済みであることは別契約です。** Windows/macOS、live認証付きgh、Node/Playwright、xprobeはこの初期版では未検証です。
+- **Host-real**: GitHub Linux runner上で実コマンドを実行。
+- **Container-real**: CIでbuildした test-only image 内で実コマンドを実行。
+- **System-service-real**: 実際の backing service/state に対して実行。journal/systemd等で本当にserviceが動いている場合だけこの表現を使います。
+- **Construct-only/stub**: exact argv/transportは検証するが、実ツール・認証・serviceまでは測定していません。
+
+| 対象 | 証拠 | 契約 |
+|---|---|---|
+| Python / argparse | Host-real (3.10 / 3.12 / 3.14) | 真偽値・choices・required・排他・条件付き必須・不正入力、stdlib-only `python -S` import |
+| subprocess | Host-real | 空白・日本語・空文字・leading hyphen・shell風文字列・cwd・env・非ゼロ・timeout・不正UTF-8 |
+| pytest | Host-real | 複数file、`-q`、`--tb short`、`-k "a or b"`、明示 `--`、失敗結果 |
+| Git | Host-real + Container-real | temp repo、`-C`、`add --`、leading-hyphen/space/Unicode path、`ls-files -z` |
+| curl | Host-real + Container-real | local HTTP、repeated header、empty option value、Unicode URL/output path、HTTP failure |
+| ls/coreutils | Host-real + Container-real | 複数flag、明示 `--`、leading-hyphen/space/Unicode filename |
+| journalctl | Container-real + Construct-only | container内で実binary/versionを実行。repeated `-u` / since / until / `-n` / no-pager のexact argvを固定 |
+| journal/systemd backing service | **未測定** | default CI imageはsystemd PID 1/journal serviceを起動しないため System-service-real を主張しない |
+| Docker | Host-real → Container-real | hostの `cli_args.Command` からlocal build済みimageへ `--`・空文字・leading hyphen・space・Unicode argvをexact transport |
+| gh | Construct-only/stub | portable subprocess stubでargv transport。live/auth/networkは未測定 |
+
+Host Python matrixは速いcore contractに限定し、Docker/systemd stateへ依存しません。Docker integration laneは `tests/docker/Dockerfile` の test-only image (`python:3.14.0-slim-bookworm`) をbuildし、その中で同じ `cli_args.py` と pytest harnessを使ってGit/curl/ls/journalctlを検証します。Docker image内のapt/pip依存はテスト基盤専用であり、`cli_args.py` のruntime依存ではありません。
+
+Git/curl/ls等がhost環境に無い場合、host-real testcaseは理由付きskipになります。ただしDocker integration laneでは必要binaryをimageに明示的に入れるため、そのlaneではskipを許容しません。外部web siteやlive認証は不要です。
+
+Ubuntu CIではPython 3.10 / 3.12 / 3.14のJUnitに加えてDocker integration JUnitを別artifactとして成功・失敗を問わず保存し、全4 reportをshared exact-report collectorへ渡します。**argvを構築できること、stubへ渡せること、real CLIが動いたこと、live/service integrationまで測ったことは別契約です。** Windows/macOS、live認証付きgh、Node/Playwright、xprobe、systemd-backed journal serviceはこの初期版では未検証です。
 
 ```bash
 python -m pip install -r tests/requirements.txt
