@@ -33,7 +33,7 @@ def test_pytest_real_two_files_and_failure(tmp_path):
 
 
 def test_pytest_real_keyword_and_explicit_separator(tmp_path):
-    target = tmp_path / "-leading_test.py"
+    target = tmp_path / "selected_test.py"
     target.write_text(
         "def test_chosen(): assert True\n"
         "def test_other(): assert False\n",
