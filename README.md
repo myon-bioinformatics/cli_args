@@ -83,6 +83,14 @@ python -S examples/run_cli.py --format json --output result.json --timeout 30 --
 
 詳細は [docs/stdlib-function-surface.md](docs/stdlib-function-surface.md) を参照してください。
 
+## 標準Pythonで段階実行を組み立てる
+
+Shellでよく見る `VAR=... → command → echo $? → if → exit 0/1/2 → 次のcommand` のバケツリレーは、Pythonが使えるなら通常の `for` / `if` / 変数 / `CommandResult.returncode` / `os.environ` / `print` / `sys.exit` で構造化できます。
+
+`1番が失敗したら2〜4番を実行しない` のような制御は新しいworkflow DSLを作らず、構造化argvを普通のPython制御フローで順番に実行します。子プロセスが親の環境変数を書き換えることはできないため、step間の状態はPython値・stdoutからparseした値・一時ファイル・明示env mappingとして渡します。
+
+詳細と実例は [docs/stdlib-orchestration-surface.md](docs/stdlib-orchestration-surface.md) を参照してください。
+
 ## 検証範囲
 
 証拠レベルを混同しません。
