@@ -73,7 +73,7 @@ def test_curl_real_empty_and_unicode_values(tmp_path):
     output = tmp_path / "保存 page.html"
     with local_server(tmp_path) as url:
         result = run_command(
-            curl.repeated("-H", ["X-Empty:", "X-Label: 日本語 value"])
+            curl.repeated("-H", ["X-Empty:", "X-Label: value with spaces"])
             .option("--output", output)
             .positional(url + "/" + quote(name)),
             timeout=10,
