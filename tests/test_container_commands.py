@@ -2,6 +2,7 @@ from contextlib import contextmanager
 from functools import partial
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+import json
 import os
 import shutil
 from threading import Thread
@@ -126,6 +127,83 @@ def test_coreutils_sort_zero_terminated_real(tmp_path):
     )
     assert result.returncode == 0
     assert result.stdout == "a\0b\0日本語\0"
+
+
+def test_sed_real_numeric_and_relative_ranges(tmp_path):
+    sed = available("sed")
+    source = tmp_path / "lines.txt"
+    source.write_text("1\n2\n3\n4\n5\n6\n7\n", encoding="utf-8")
+
+    numeric = run_command(Command((sed, "-n", "4,6p", str(source))))
+    assert (numeric.returncode, numeric.stdout) == (0, "4\n5\n6\n")
+
+    # GNU sed extension: addr,+N means the matching address plus N lines.
+    relative = run_command(Command((sed, "-n", "4,+2p", str(source))))
+    assert (relative.returncode, relative.stdout) == (0, "4\n5\n6\n")
+
+
+def test_grep_real_literal_exact_max_count_and_nul_filename(tmp_path):
+    grep = available("grep")
+    content = tmp_path / "content.txt"
+    content.write_text("alpha\nalpha beta\nbeta\n", encoding="utf-8")
+
+    exact = run_command(
+        Command((grep,))
+        .flag("-F")
+        .flag("-x")
+        .option("-m", "1")
+        .passthrough(["alpha", str(content)], separator=True)
+    )
+    assert (exact.returncode, exact.stdout) == (0, "alpha\n")
+
+    weird = tmp_path / "-match 日本語 file.txt"
+    weird.write_text("needle\n", encoding="utf-8")
+    names = run_command(
+        Command((grep,))
+        .flag("-F")
+        .flag("-l")
+        .flag("-Z")
+        .passthrough(["needle", str(weird)], separator=True)
+    )
+    assert names.returncode == 0
+    assert names.stdout == str(weird) + "\0"
+
+
+def test_find_print0_and_xargs_arg_file_real(tmp_path):
+    find = available("find")
+    xargs = available("xargs")
+    root = tmp_path / "tree"
+    root.mkdir()
+    names = ["normal.txt", "space 日本語.txt", "-leading.txt"]
+    for name in names:
+        (root / name).write_text(name, encoding="utf-8")
+
+    found = run_command(Command((find, str(root), "-type", "f", "-print0")))
+    assert found.returncode == 0
+    actual = set(found.stdout.split("\0")[:-1])
+    expected = {str(root / name) for name in names}
+    assert actual == expected
+
+    arg_file = tmp_path / "args.bin"
+    values = ["one", "two words", "-leading", "日本語"]
+    arg_file.write_bytes(("\0".join(values) + "\0").encode("utf-8"))
+    probe = (
+        Command((xargs,))
+        .flag("-0")
+        .option("-a", arg_file)
+        .flag("-r")
+        .option("-n", "2")
+        .positional(
+            "python", "-S", "-c",
+            "import json,sys; print(json.dumps(sys.argv[1:], ensure_ascii=False))",
+        )
+    )
+    result = run_command(probe)
+    assert result.returncode == 0, result.stderr
+    assert [json.loads(line) for line in result.stdout.splitlines()] == [
+        ["one", "two words"],
+        ["-leading", "日本語"],
+    ]
 
 
 def test_ffmpeg_container_real_lavfi_to_null():
