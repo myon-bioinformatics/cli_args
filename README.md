@@ -91,6 +91,16 @@ Shellでよく見る `VAR=... → command → echo $? → if → exit 0/1/2 → 
 
 詳細と実例は [docs/stdlib-orchestration-surface.md](docs/stdlib-orchestration-surface.md) を参照してください。
 
+## 最小の観測経路から始める
+
+read-onlyな情報取得では、最初から独自API/MCPを作らず **local/static data → raw HTTP document → generic local parser → official API → MCP** の順で、必要な契約を満たす最小の面を選びます。HTML全文を取れば十分なら、`urllib.request` や既存curlで取得した全文をそのまま使って構いません。
+
+APIはauth・stable schema・pagination・server-side filtering/search・mutation・計算が必要なとき、MCPはtool discovery・typed invocation・session/resource等のagent protocol自体が価値になるときに昇格します。
+
+また、Pythonがorchestration layerなら日時/level付き診断は独自shell echo規約ではなくstdlib `logging` を優先します。
+
+詳細は [docs/minimal-transport-surface.md](docs/minimal-transport-surface.md) を参照してください。
+
 ## 検証範囲
 
 証拠レベルを混同しません。
