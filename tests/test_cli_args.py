@@ -14,6 +14,23 @@ from cli_args import (Argument, Command, CommandResult, add_execution_arguments,
 ROOT = Path(__file__).resolve().parents[1]
 
 
+def test_public_collection_boundaries_reject_scalar_or_unordered_inputs():
+    with pytest.raises(TypeError):
+        Argument("--mode")
+    with pytest.raises(ValueError):
+        Argument(())
+    with pytest.raises(TypeError):
+        parse_args([], "--mode a")
+    with pytest.raises(TypeError):
+        parse_args([], {"--mode", "a"})
+    parser = make_parser()
+    with pytest.raises(TypeError):
+        require_when(parser, argparse.Namespace(output=None), when=True, required="output")
+    with pytest.raises(TypeError):
+        require_when(parser, argparse.Namespace(output=None), when=True,
+                     required=(name for name in ["output"]))
+
+
 def test_native_arguments_and_boolean():
     specs = [Argument(("--mode",), {"choices": ("a", "b"), "required": True}),
              Argument(("--enabled",), {"action": argparse.BooleanOptionalAction}),
@@ -65,6 +82,7 @@ def test_shared_options(tmp_path):
 
 def test_command_order_and_values():
     base = Command(("tool",))
+    assert Command(["tool", "status"]).argv == ("tool", "status")
     command = (base.flag("-q").flag("-v", False).option("--empty", "")
                .option("--absent", None).option("--pattern", "-x", attached=True)
                .repeated("-H", ["A: b", "C: d"]).multiple("--files", ["a", "b"]))
