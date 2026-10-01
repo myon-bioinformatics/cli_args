@@ -67,6 +67,14 @@ python -S examples/run_cli.py --format json --output result.json --timeout 30 --
 - 出力をメモリに保持します。巨大出力、バイナリ、対話的stdin、ストリーミング、子孫プロセス全体の停止は初期版の対象外です。
 - `env` 指定は環境全体の置換です。継承する場合は呼び出し側で `os.environ` と合成してください。
 
+## 標準ライブラリを第3のCLI面として使う
+
+外部CLIを追加する前に、Python標準ライブラリの `python -m` / `python -c` / 通常importで同じ目的を安全に満たせないか確認します。AI coding時の既定の判断順は **stdlib → 既存host CLI → Docker/追加依存** です。
+
+代表例は `json.tool`、`zipfile`、`tarfile`、`http.server`、`platform`、`compileall`、`tempfile`。#1では主要例を実際にCIで動かし、単なるcheat sheetにはしません。標準モジュールへ独自aliasを被せず、本来の `python -m module` 名を見せることでPython version/provenanceを曖昧にしません。
+
+詳細と「外部ツールを入れる前に確認する標準機能」は [docs/stdlib-command-surface.md](docs/stdlib-command-surface.md) を参照してください。
+
 ## 検証範囲
 
 証拠レベルを混同しません。
