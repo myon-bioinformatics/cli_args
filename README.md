@@ -45,9 +45,9 @@ write_output(result, format="json")
 | `positional(*values)` | 指定順に位置引数を追加 |
 | `passthrough(values, separator=False)` | argv をそのまま追加。`separator=True` のときだけ先頭に `--` を追加。`values` は複数トークンの collection 専用 |
 
-コマンドごとの意味や有効な組み合わせは呼び出し側で定義します。引数は文字列またはテキストパスで渡し、数値は明示的に文字列化します。シェル展開・引用符の解釈・文字列の分割は行いません。`repeated()` / `multiple()` / `passthrough()` の collection 引数に単一の `str` / `PathLike` を渡すと、文字単位・パス断片への暗黙展開を防ぐため `TypeError` になります。1トークンだけ追加したい場合は `option()` / `positional()` を使います。
+コマンドごとの意味や有効な組み合わせは呼び出し側で定義します。引数は文字列またはテキストパスで渡し、数値は明示的に文字列化します。シェル展開・引用符の解釈・文字列の分割は行いません。`repeated()` / `multiple()` / `passthrough()` の collection 引数は、順序を持つ有限の `Sequence`（list/tuple等）専用です。単一の `str` / `PathLike` に加え、順序が不定な set/dict や一度きりの generator も `TypeError` で拒否します。argvの順序・再現性をAPI契約にするためです。1トークンだけ追加したい場合は `option()` / `positional()` を使います。
 
-`pytest_command(paths, quiet=True, tb="short", summary=True, extra=[...])` は `python -m pytest -q --tb short -ra ...` を構築する任意のプリセットです。`paths` と `extra` も collection 専用で、単一の `str` / `PathLike` は拒否します。pytestを本体からimportせず、自動インストールもしません。
+`pytest_command(paths, quiet=True, tb="short", summary=True, extra=[...])` は `python -m pytest -q --tb short -ra ...` を構築する任意のプリセットです。`paths` と `extra` も順序を持つ有限の `Sequence` 専用で、単一の `str` / `PathLike`、set/dict、generator は拒否します。pytestを本体からimportせず、自動インストールもしません。
 
 ## 実行・出力
 
@@ -62,8 +62,8 @@ python -S examples/run_cli.py --format json --output result.json --timeout 30 --
 - 非ゼロ終了も結果として返します。起動失敗は `OSError`、タイムアウトは `timed_out=True` / `returncode=None` と途中出力を返します。
 - dry-runは実行せず、`executed=False` / `returncode=None` を返します。成功実行とは区別します。
 - JSONは実行結果の封筒です。Git・curl等のstdoutを自動で業務データに変換しません。
-- textの実行結果はstdoutそのままです。ライブラリ利用者はstderrと終了状態を確認してください。例のCLIはstderrも表示し、非ゼロ終了を伝え、タイムアウト124・実行ファイル不在127で終了します。
-- 保存はUTF-8・既存ファイル上書きです。親ディレクトリは作成しません。JSON変換に成功してから書き込みますが、原子的な保存ではありません。
+- textの実行結果はstdoutそのままです。ライブラリ利用者はstderrと終了状態を確認してください。例のCLIはstderrも表示し、非ゼロ終了を伝え、タイムアウト124・実行ファイル不在127で終了します。`--output` の書込みに失敗した場合（親ディレクトリ不存在・権限不足等）は traceback を出さず `failed to write output: ...` をstderrへ出して終了1にします。
+- 保存はUTF-8・LF (`\n`) 固定・既存ファイル上書きです。Windowsを含め改行バイトをLFに固定します。親ディレクトリは作成しません。JSON変換に成功してから書き込みますが、原子的な保存ではありません。
 - 出力をメモリに保持します。巨大出力、バイナリ、対話的stdin、ストリーミング、子孫プロセス全体の停止は初期版の対象外です。
 - `env` 指定は環境全体の置換です。継承する場合は呼び出し側で `os.environ` と合成してください。
 
