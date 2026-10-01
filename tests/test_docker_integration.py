@@ -25,6 +25,34 @@ def test_docker_transports_exact_argv_and_runs_container_suite():
     assert result.returncode == 0, result.stderr
     assert json.loads(result.stdout) == transported
 
+    inspected = run_command(
+        Command((docker,))
+        .positional("inspect")
+        .option("--format", "{{.Config.WorkingDir}}")
+        .positional(image),
+        timeout=30,
+    )
+    assert (inspected.returncode, inspected.stdout.strip()) == (0, "/workspace")
+
+    name = "cli-args-" + uuid.uuid4().hex[:12]
+    started = run_command(
+        Command((docker,)).positional("run", "-d", "--rm", "--name", name, image, "sleep", "60"),
+        timeout=30,
+    )
+    assert started.returncode == 0, started.stderr
+    try:
+        executed = run_command(
+            Command((docker,)).positional(
+                "exec", name, "python", "-S", "-c",
+                "import json,sys; print(json.dumps(sys.argv[1:], ensure_ascii=False))",
+            ).passthrough(["exec space", "実行"]),
+            timeout=30,
+        )
+        assert executed.returncode == 0, executed.stderr
+        assert json.loads(executed.stdout) == ["exec space", "実行"]
+    finally:
+        run_command(Command((docker,)).positional("rm", "-f", name), timeout=30)
+
     suite = run_command(
         Command((docker,)).positional(
             "run", "--rm", image,
