@@ -6,6 +6,7 @@ from pathlib import Path
 import shutil
 import sys
 from threading import Thread
+from urllib.parse import quote
 
 import pytest
 
@@ -31,14 +32,45 @@ def test_pytest_real_two_files_and_failure(tmp_path):
     assert "FAILED test_second.py::test_bad" in result.stdout
 
 
+def test_pytest_real_keyword_and_explicit_separator(tmp_path):
+    target = tmp_path / "-leading_test.py"
+    target.write_text(
+        "def test_chosen(): assert True\n"
+        "def test_other(): assert False\n",
+        encoding="utf-8",
+    )
+    command = pytest_command(
+        [target.name],
+        quiet=True,
+        tb="short",
+        summary=True,
+        extra=["--override-ini", "addopts=", "-k", "chosen or absent", "--"],
+    )
+    result = run_command(command, cwd=tmp_path, timeout=30)
+    assert result.returncode == 0, result.stdout + result.stderr
+    assert "1 passed, 1 deselected" in result.stdout
+
+
 def test_git_real_repository(tmp_path):
     git = Command((available("git"),)).option("-C", tmp_path)
     assert run_command(git.positional("init", "--quiet")).returncode == 0
-    (tmp_path / "日本 語.txt").write_text("hello", encoding="utf-8")
-    assert run_command(git.positional("add", "--", "日本 語.txt")).returncode == 0
+    normal = "日本 語.txt"
+    leading = "-leading 日本語.txt"
+    (tmp_path / normal).write_text("hello", encoding="utf-8")
+    (tmp_path / leading).write_text("leading", encoding="utf-8")
+    assert run_command(git.positional("add").passthrough([normal, leading], separator=True)).returncode == 0
     result = run_command(git.positional("ls-files", "-z"))
-    assert (result.returncode, result.stdout) == (0, "日本 語.txt\0")
+    assert result.returncode == 0
+    assert result.stdout.split("\0")[:-1] == [leading, normal]
     assert run_command(git.positional("not-a-git-command")).returncode != 0
+
+
+def test_ls_real_separator_space_unicode_and_leading_hyphen(tmp_path):
+    name = "-leading 日本語 file.txt"
+    (tmp_path / name).write_text("ok\n", encoding="utf-8")
+    command = Command((available("ls"),)).flag("-1").passthrough([name], separator=True)
+    result = run_command(command, cwd=tmp_path)
+    assert (result.returncode, result.stdout) == (0, name + "\n")
 
 
 class QuietHandler(SimpleHTTPRequestHandler):
@@ -60,14 +92,27 @@ def local_server(directory):
 
 
 def test_curl_real_local_http_and_failure(tmp_path):
-    curl = Command((available("curl"),)).positional("--disable").flag("--silent").flag("--show-error").flag("--fail")
-    curl = curl.option("--noproxy", "*").option("--max-time", "5")
-    (tmp_path / "article.html").write_text("<h1>日本語</h1>", encoding="utf-8")
-    output = tmp_path / "saved page.html"
+    curl = (
+        Command((available("curl"),))
+        .positional("--disable")
+        .flag("--silent")
+        .flag("--show-error")
+        .flag("--fail")
+        .option("--noproxy", "*")
+        .option("--max-time", "5")
+        .option("--user-agent", "")
+    )
+    source = "日本 語.html"
+    (tmp_path / source).write_text("<h1>日本語</h1>", encoding="utf-8")
+    output = tmp_path / "saved 日本語 page.html"
     with local_server(tmp_path) as url:
-        result = run_command(curl.repeated("-H", ["Accept: text/html", "X-Test: cli"])
-                             .option("--output", output).positional(url + "/article.html"), timeout=10)
-        assert result.returncode == 0
+        result = run_command(
+            curl.repeated("-H", ["Accept: text/html", "X-Test: 日本語 value"])
+            .option("--output", output)
+            .positional(url + "/" + quote(source)),
+            timeout=10,
+        )
+        assert result.returncode == 0, result.stderr
         assert output.read_text(encoding="utf-8") == "<h1>日本語</h1>"
         assert run_command(curl.positional(url + "/missing"), timeout=10).returncode == 22
 
