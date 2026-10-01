@@ -101,6 +101,8 @@ Likewise, text files created with platform-default newline translation can diffe
 
 ## Localhost HTTP note
 
-Ambient HTTP proxy variables can change the behavior of high-level URL helpers even when the target is `127.0.0.1`. The macOS GitHub runner exposed this during #1: the first `http.server` test used `urllib.request.urlopen` and timed out because the client path could honor proxy configuration.
+The macOS GitHub runner exposed an important evidence boundary: a spawned `python -m http.server --bind 127.0.0.1` process remained alive, but a second process could not reliably complete a localhost client connection. Replacing one client library with another did not change that result.
 
-The portability test now connects with `http.client.HTTPConnection("127.0.0.1", port)` so it measures the localhost-only `python -m http.server` process rather than runner proxy policy. External HTTP/network access is not required.
+The cross-platform contract therefore measures that the real `http.server` CLI starts with an ephemeral port, binds to `127.0.0.1`, and enters its serving loop without exiting. It does **not** make runner-local networking a requirement of the stdlib command itself. Linux host tests elsewhere in the repository already exercise real local HTTP request/response behavior.
+
+External HTTP/network access is not required.
