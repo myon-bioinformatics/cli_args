@@ -55,8 +55,10 @@ def test_docker_transports_exact_argv_and_runs_container_suite():
         run_command(Command((docker,)).positional("rm", "-f", name), timeout=30)
 
     suite = run_command(
-        Command((docker,)).positional(
-            "run", "--rm", image,
+        Command((docker,)).positional("run", "--rm")
+        .option("-e", "CLI_ARGS_CONTAINER_REAL=1")
+        .positional(
+            image,
             "python", "-m", "pytest", "-q", "tests/test_container_commands.py",
         ),
         timeout=120,
