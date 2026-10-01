@@ -65,3 +65,32 @@ def test_docker_transports_exact_argv_and_runs_container_suite():
     )
     assert suite.returncode == 0, suite.stdout + suite.stderr
     assert "passed" in suite.stdout
+
+
+def test_docker_compose_real_repeated_files_with_local_image(tmp_path):
+    docker = shutil.which("docker")
+    image = os.environ.get("CLI_ARGS_TEST_IMAGE")
+    if docker is None or not image:
+        pytest.skip("Docker integration image is not configured")
+
+    version = run_command(Command((docker, "compose", "version")), timeout=30)
+    assert version.returncode == 0, version.stderr
+
+    base = tmp_path / "compose-base.json"
+    override = tmp_path / "compose-override.json"
+    base.write_text(
+        json.dumps({"services": {"probe": {"image": image}}}),
+        encoding="utf-8",
+    )
+    override.write_text(
+        json.dumps({"services": {"probe": {"environment": {"CLI_ARGS": "space value"}}}}),
+        encoding="utf-8",
+    )
+    configured = run_command(
+        Command((docker, "compose"))
+        .repeated("-f", [base, override])
+        .positional("config", "--services"),
+        timeout=30,
+    )
+    assert configured.returncode == 0, configured.stderr
+    assert configured.stdout.splitlines() == ["probe"]
