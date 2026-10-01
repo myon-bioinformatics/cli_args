@@ -1,2 +1,3 @@
-# Test dependency only; cli_args.py has no third-party dependencies.
-pytest>=8
+# Compatibility entry point for contributors.
+# Canonical test-only dependencies live in tests/requirements.txt.
+-r tests/requirements.txt
