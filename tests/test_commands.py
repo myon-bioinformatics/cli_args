@@ -129,3 +129,103 @@ def test_gh_mock_transport_records_argv(tmp_path):
         .option("--json", "number,title").option("--state", "open"))
     assert json.loads(result.stdout)["argv"] == ["issue", "list", "--repo", "owner/repo",
                                                "--json", "number,title", "--state", "open"]
+
+
+def test_node_and_npm_real_argv_transport_and_playwright_shape(tmp_path):
+    node = available("node")
+    npm = available("npm")
+    probe = tmp_path / "argv_probe.js"
+    probe.write_text(
+        "console.log(JSON.stringify(process.argv.slice(2)))\n",
+        encoding="utf-8",
+    )
+    (tmp_path / "package.json").write_text(
+        json.dumps({"scripts": {"probe": "node argv_probe.js"}}),
+        encoding="utf-8",
+    )
+    values = ["--project=chromium", "--grep", "value with spaces", "-leading", "日本語"]
+    result = run_command(
+        Command((npm, "run", "--silent", "probe", "--")).passthrough(values),
+        cwd=tmp_path,
+        timeout=30,
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == values
+
+    # Playwright itself is construct-only here. browser-test-kit owns real
+    # Playwright/browser evidence; this fixes the argv shape used by wrappers.
+    playwright = (
+        Command((node, "node_modules/@playwright/test/cli.js"))
+        .positional("test")
+        .option("--project", "chromium", attached=True)
+        .option("--project", "webkit", attached=True)
+        .option("--grep", "value with spaces")
+        .positional("tests/smoke.spec.ts")
+    )
+    assert playwright.argv == (
+        node,
+        "node_modules/@playwright/test/cli.js",
+        "test",
+        "--project=chromium",
+        "--project=webkit",
+        "--grep",
+        "value with spaces",
+        "tests/smoke.spec.ts",
+    )
+
+
+def test_gh_real_binary_and_api_shape():
+    gh = available("gh")
+    version = run_command(Command((gh, "--version")), timeout=10)
+    assert version.returncode == 0
+    assert "gh version" in version.stdout.lower()
+
+    # Authenticated/network execution is deliberately not claimed here.
+    api = (
+        Command((gh,))
+        .positional("api")
+        .option("--hostname", "github.com")
+        .option("--method", "GET")
+        .repeated("-H", [
+            "Accept: application/vnd.github+json",
+            "X-GitHub-Api-Version: 2022-11-28",
+        ])
+        .option("--jq", ".sha")
+        .positional("repos/owner/repo/contents/path with space")
+    )
+    assert api.argv == (
+        gh,
+        "api",
+        "--hostname", "github.com",
+        "--method", "GET",
+        "-H", "Accept: application/vnd.github+json",
+        "-H", "X-GitHub-Api-Version: 2022-11-28",
+        "--jq", ".sha",
+        "repos/owner/repo/contents/path with space",
+    )
+
+
+def test_construct_only_flutter_and_dart_argv():
+    flutter = (
+        Command(("flutter",))
+        .positional("build", "web")
+        .option("-t", "lib/main.dart")
+        .option("--base-href", "/flutter_navigation_basic/")
+        .option("--dart-define", "E2E=true", attached=True)
+    )
+    assert flutter.argv == (
+        "flutter", "build", "web",
+        "-t", "lib/main.dart",
+        "--base-href", "/flutter_navigation_basic/",
+        "--dart-define=E2E=true",
+    )
+
+    dart = (
+        Command(("dart",))
+        .positional("run", "tool/dev.dart", "bundle")
+        .option("--output", "build/my diagnostics.zip")
+    )
+    assert dart.argv == (
+        "dart", "run", "tool/dev.dart", "bundle",
+        "--output", "build/my diagnostics.zip",
+    )
