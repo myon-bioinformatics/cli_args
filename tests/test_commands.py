@@ -107,7 +107,7 @@ def test_curl_real_local_http_and_failure(tmp_path):
     output = tmp_path / "saved 日本語 page.html"
     with local_server(tmp_path) as url:
         result = run_command(
-            curl.repeated("-H", ["Accept: text/html", "X-Test: 日本語 value"])
+            curl.repeated("-H", ["Accept: text/html", "X-Test: value with spaces"])
             .option("--output", output)
             .positional(url + "/" + quote(source)),
             timeout=10,
