@@ -3,7 +3,7 @@ FROM python:3.14.0-slim-bookworm
 ENV DEBIAN_FRONTEND=noninteractive
 ENV CLI_ARGS_CONTAINER_REAL=1
 RUN apt-get update \
-    && apt-get install -y --no-install-recommends git curl coreutils sed grep findutils systemd ffmpeg \
+    && apt-get install -y --no-install-recommends git curl coreutils sed grep findutils tar gzip ripgrep systemd ffmpeg \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /workspace
