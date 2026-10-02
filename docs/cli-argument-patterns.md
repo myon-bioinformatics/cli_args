@@ -79,6 +79,66 @@ A good automation option usually does one of these:
 5. avoids shell quoting/splitting;
 6. exposes provenance or selection directly.
 
+## Exit-code contracts: let status mean something
+
+For automation, "nothing printed" and "nothing changed" should not be inferred from prose when the CLI already
+defines an exit contract.
+
+| Tool | Pattern | Useful contract |
+|---|---|---|
+| Git | `diff --quiet --no-ext-diff --no-textconv -- PATH` | exit 0 = no diff, exit 1 = diff; no human diff text needs parsing. |
+| Git | `ls-files --error-unmatch -- PATH` | exit 0 = tracked/index match, exit 1 = not present in the index. |
+| `grep` | `-q` | match/no-match can be used as a branch condition without output. |
+| `sort` | `-C` | validate ordering without printing the sorted data. |
+| `xargs` | `-r` / `--no-run-if-empty` | empty input does not invoke the child command at all. |
+| pytest | `--collect-only -q` | inspect/select the test set without executing tests. |
+| pytest | `--maxfail=1` | bound noisy follow-on failures while preserving a failing exit status. |
+
+Official references:
+- Git diff options: https://git-scm.com/docs/diff-options
+- Git ls-files: https://git-scm.com/docs/git-ls-files
+- pytest reference: https://docs.pytest.org/en/stable/reference/reference.html
+- GNU grep: https://www.gnu.org/software/grep/manual/grep.html
+- GNU coreutils sort: https://www.gnu.org/software/coreutils/manual/coreutils.html
+- GNU xargs: https://www.gnu.org/software/findutils/manual/html_node/find_html/xargs-options.html
+
+## Reproducibility and isolation: make policy visible in argv
+
+Useful command options can carry operational policy directly, which is much easier to audit than hidden shell
+state or environment assumptions.
+
+| Tool | Pattern | Why it matters |
+|---|---|---|
+| GNU tar | `--sort=name --mtime=@0 --owner=0 --group=0 --numeric-owner` | normalize order, timestamps and ownership for reproducible archives. |
+| gzip | `-n` / `--no-name` | omit original filename/timestamp metadata from compressed output. |
+| Docker | `--pull=never` | require the already-built local image; never hide a registry pull. |
+| Docker | `--network=none` | make "this test does not need network" an executable policy. |
+| Docker | `--read-only --tmpfs /tmp:...` | read-only root filesystem with an explicit bounded writable scratch area. |
+
+The Docker evidence in this repository combines those flags with the locally-built test image. The test succeeds
+only if the local image is sufficient, the root filesystem can stay read-only, and the declared tmpfs provides the
+required scratch write.
+
+Official references:
+- Docker run: https://docs.docker.com/reference/cli/docker/container/run/
+- GNU tar reproducibility: https://www.gnu.org/software/tar/manual/html_node/Reproducibility.html
+- GNU gzip: https://www.gnu.org/software/gzip/manual/gzip.html
+
+## Modern search tools: keep the same machine-oriented philosophy
+
+Modern CLIs often expose structured output that is safer than parsing their default terminal presentation.
+
+| Tool | Pattern | Why it is useful |
+|---|---|---|
+| ripgrep | `--json PATTERN PATH` | emit structured begin/match/end/summary events as JSON Lines. |
+| ripgrep | `-0 -l PATTERN PATH` | emit matching filenames with NUL terminators. |
+
+This complements classic `grep -Z` / `find -print0`: newer tools should not cause the project to abandon the
+same machine-readable and NUL-safe contracts.
+
+Reference:
+- ripgrep guide/source: https://github.com/BurntSushi/ripgrep
+
 ## Batch / stdin-oriented options
 
 Some excellent CLI features require non-interactive stdin or a batch protocol:
