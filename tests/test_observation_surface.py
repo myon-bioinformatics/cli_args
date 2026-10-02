@@ -1,4 +1,6 @@
+from datetime import datetime
 import logging
+import time
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from html.parser import HTMLParser
 from io import StringIO
@@ -98,13 +100,29 @@ def test_missing_document_remains_http_404(tmp_path):
 def test_logging_supplies_metadata_without_echo_plumbing():
     stream = StringIO()
     handler = logging.StreamHandler(stream)
-    handler.setFormatter(logging.Formatter("%(levelname)s %(name)s %(message)s"))
+    formatter = logging.Formatter(
+        "%(asctime)sZ %(levelname)s %(name)s %(message)s",
+        datefmt="%Y-%m-%dT%H:%M:%S",
+    )
+    formatter.converter = time.gmtime
+    handler.setFormatter(formatter)
     logger = logging.getLogger("cli_args.observation")
+    previous = (logger.handlers[:], logger.level, logger.propagate)
     logger.handlers = [handler]
     logger.propagate = False
     logger.setLevel(logging.INFO)
     try:
         logger.info("fetch_complete")
+        try:
+            raise RuntimeError("observation exception evidence")
+        except RuntimeError:
+            logger.exception("fetch_failed")
     finally:
-        logger.handlers = []
-    assert stream.getvalue() == "INFO cli_args.observation fetch_complete\n"
+        logger.handlers, logger.level, logger.propagate = previous
+        handler.close()
+    lines = stream.getvalue().splitlines()
+    datetime.strptime(lines[0].split()[0], "%Y-%m-%dT%H:%M:%SZ")
+    assert lines[0].endswith(" INFO cli_args.observation fetch_complete")
+    assert lines[1].endswith(" ERROR cli_args.observation fetch_failed")
+    assert "Traceback (most recent call last):" in stream.getvalue()
+    assert "RuntimeError: observation exception evidence" in stream.getvalue()

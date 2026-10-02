@@ -28,3 +28,12 @@ the normal seven-report success contract.
 This mechanism is for bounded exploration and regression evidence. It must not be used to relabel an unknown
 or newly introduced product failure as "expected" merely to make CI green. Adding or changing an expected
 failure requires an explicit testcase name and expected classification in `run_lab.py`.
+
+
+The executable harness preserves UTC timestamp / level / logger diagnostics in `diagnostics.log`,
+including traceback for unexpected harness exceptions. The JSON receipt adds UTC start/end times,
+monotonic duration, Python/platform and available GitHub SHA/run/attempt provenance; local unavailable
+GitHub values remain null. Child assertion/setup traceback remains in raw stdout/JUnit.
+Previous raw artifacts are removed before each child launch, and duplicate testcase names are rejected.
+Human diagnostics go to stderr; stdout remains the JSON receipt. These are test-only changes,
+not a runtime logging configuration or a new workflow engine.

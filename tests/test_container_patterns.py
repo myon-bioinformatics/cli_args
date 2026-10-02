@@ -67,7 +67,7 @@ def test_nul_safe_find_xargs_and_sort_contracts(tmp_path):
 
     tree = tmp_path / "tree"
     tree.mkdir()
-    names = ["normal.txt", "space 日本語.txt", "-leading.txt"]
+    names = ["normal.txt", "space 日本語.txt", "-leading.txt", "line\nbreak.txt"]
     for name in names:
         (tree / name).write_text(name, encoding="utf-8")
 
@@ -76,7 +76,7 @@ def test_nul_safe_find_xargs_and_sort_contracts(tmp_path):
     assert set(found.stdout.split("\0")[:-1]) == {str(tree / name) for name in names}
 
     args_file = tmp_path / "args.bin"
-    values = ["one", "two words", "-leading", "日本語"]
+    values = ["one", "two words", "-leading", "日本語", "line\nbreak"]
     args_file.write_bytes(("\0".join(values) + "\0").encode("utf-8"))
     batched = run_command(
         Command((xargs,))
@@ -93,6 +93,7 @@ def test_nul_safe_find_xargs_and_sort_contracts(tmp_path):
     assert [json.loads(line) for line in batched.stdout.splitlines()] == [
         ["one", "two words"],
         ["-leading", "日本語"],
+        ["line\nbreak"],
     ]
 
     empty = tmp_path / "empty.bin"
@@ -166,7 +167,7 @@ def test_ripgrep_json_and_nul_filename_modes(tmp_path):
     rg = available("rg")
     root = tmp_path / "rg"
     root.mkdir()
-    target = root / "-match 日本語 file.txt"
+    target = root / "-match 日本語\nfile.txt"
     target.write_text("needle here\n", encoding="utf-8")
 
     structured = run_command(Command((rg, "--json", "needle", str(root))))
@@ -180,3 +181,4 @@ def test_ripgrep_json_and_nul_filename_modes(tmp_path):
     )
     assert nul_names.returncode == 0
     assert nul_names.stdout == str(target) + "\0"
+

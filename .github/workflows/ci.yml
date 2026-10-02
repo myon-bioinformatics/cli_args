@@ -1,5 +1,16 @@
 name: CLI tests
-on: [push, pull_request, workflow_dispatch]
+on:
+  push:
+    paths-ignore:
+      - 'README.md'
+      - 'docs/**'
+      - 'tests/failure_lab/README.md'
+  pull_request:
+    paths-ignore:
+      - 'README.md'
+      - 'docs/**'
+      - 'tests/failure_lab/README.md'
+  workflow_dispatch:
 
 permissions:
   contents: read
@@ -111,6 +122,7 @@ jobs:
             test-results/negative-evidence/receipt.json
             test-results/negative-evidence/child-stdout.txt
             test-results/negative-evidence/child-stderr.txt
+            test-results/negative-evidence/diagnostics.log
           if-no-files-found: error
           retention-days: 14
 
@@ -137,3 +149,4 @@ jobs:
       expected-reports: '["junit-py3.10/pytest-3.10.xml","junit-py3.12/pytest-3.12.xml","junit-py3.14/pytest-3.14.xml","junit-docker-integration/docker-integration.xml","junit-container-real/container-real.xml","junit-core-windows/core-windows.xml","junit-core-macos/core-macos.xml"]'
       artifact-pattern: "junit-*"
       output-artifact: failure-identity
+
