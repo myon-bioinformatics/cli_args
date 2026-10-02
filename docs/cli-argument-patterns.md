@@ -161,3 +161,41 @@ Prefer, in order:
 
 The repository should keep adding obscure-but-useful options when they improve reliability, readability,
 or reproducibility—not merely because they are uncommon.
+
+
+## Patterns recovered from existing investigation/test commands
+
+These entries came from commands already used in this PR or the shared Git inspector;
+only the missing catalog entries and focused execution evidence are added. There is no new runtime preset.
+
+| Existing pattern | Practical use | Evidence / scope |
+|---|---|---|
+| curl `--disable` as the first argument | Ignore default curlrc so local configuration does not silently inject options. | Host-real: a temporary CURL_HOME adds a header without the flag; the flag suppresses that header in a local HTTP trace. |
+| curl `--noproxy '*' --max-time 5 --silent --show-error` | Keep a localhost fixture independent of inherited proxy settings; bound the transfer while retaining errors. | Host-real: local transfer succeeds with an intentionally unusable inherited proxy. Existing HTTP failure tests check exit 22. The outer Python timeout is separate; this does not isolate all curl environment variables. |
+| curl `--trace-ascii FILE` | Retain request/response diagnostics when a transfer contract needs inspection. | Host-real: synthetic localhost request headers confirm config suppression. Traces may contain headers/body credentials; this fixture uses no credentials. Not a structured domain API. |
+| pytest `--override-ini addopts=` | Clear project addopts for a deliberately controlled child test invocation. | Host-real: project `--maxfail=1` stops after one failure; the override executes both failing cases. It does not clear PYTEST_ADDOPTS, plugins or conftest. |
+| Git `ls-files -z --cached --others --exclude-standard` | Include tracked and untracked-but-not-ignored files without writing a directory walker or ignore parser. | Host-real: tracked/Unicode/spaced untracked files are returned; ignored file is excluded. CLI record order is not promised as sorted; consumers sort explicitly when required. |
+| Git `--no-optional-locks status --porcelain=v2 -z --untracked-files=all` | Observe individual untracked files while suppressing optional index refresh/locking. | Host-real: an existing index.lock and index bytes remain unchanged. This is not a general read-only enforcement switch for arbitrary Git subcommands. |
+| Docker `inspect --format ...`, Compose repeated `-f FILE` | Select image metadata / layer configuration using existing Docker grammar. | Existing Docker-real tests assert WorkingDir/environment and real Compose config services. No general template engine is added here. |
+| FFmpeg `-nostdin -hide_banner -loglevel error -f lavfi ... -f null -` | Run a bounded synthetic media probe without interactive stdin or an output artifact. | Existing container-real lavfi-to-null test; this is not evidence for all media formats/codecs. |
+
+Origins:
+- [Current PR host tests](../tests/test_commands.py) already use curl configuration/proxy controls and pytest addopts override.
+- [Shared inspector baseline](https://github.com/myon-bioinformatics/myon-bioinformatics/blob/a06641024a782af31bdb51fb0e0d6a1ea21995d0/git_inspector.py)
+  uses the tracked + untracked + ignored boundary and optional-lock suppression.
+- [New focused tests](../tests/test_host_cli_patterns.py) exercise the config/ignore/locking behaviors above.
+- [Docker evidence](../tests/test_docker_integration.py) and [FFmpeg evidence](../tests/test_container_commands.py)
+  already existed; the catalog now makes those options discoverable.
+
+Official references:
+- [curl options](https://curl.se/docs/manpage.html)
+- [pytest addopts / override-ini](https://docs.pytest.org/en/stable/reference/reference.html)
+- [Git global options](https://git-scm.com/docs/git)
+- [Git ls-files](https://git-scm.com/docs/git-ls-files)
+- [Git status](https://git-scm.com/docs/git-status)
+- [Docker inspect](https://docs.docker.com/reference/cli/docker/inspect/)
+- [Docker Compose](https://docs.docker.com/reference/cli/docker/compose/)
+- [FFmpeg options](https://ffmpeg.org/ffmpeg.html)
+
+Do not add every useful flag as a cli_args method. Keep argv construction generic and keep
+new tests tied to a real ambiguity, environment dependency or observable result.
