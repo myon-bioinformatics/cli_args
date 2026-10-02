@@ -40,13 +40,13 @@ jobs:
       - name: Verify Docker transport and Compose grammar
         env:
           CLI_ARGS_TEST_IMAGE: cli-args-test:ci
-        run: python -m pytest -q -ra --tb=short tests/test_docker_integration.py --junitxml=test-results/docker-integration.xml
+        run: python -m pytest -q -ra --tb=short tests/test_docker_integration.py tests/test_docker_policy.py --junitxml=test-results/docker-integration.xml
       - name: Run container-real CLI suite
         run: >-
           docker run --rm
           -v "$PWD/test-results:/reports"
           cli-args-test:ci
-          python -m pytest -q -ra --tb=short tests/test_container_commands.py
+          python -m pytest -q -ra --tb=short tests/test_container_commands.py tests/test_container_patterns.py
           --junitxml=/reports/container-real.xml
       - uses: actions/upload-artifact@v7
         if: always()
