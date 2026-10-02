@@ -90,6 +90,42 @@ jobs:
           if-no-files-found: error
           retention-days: 14
 
+
+  negative-evidence:
+    name: negative evidence / intentional failures
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r tests/requirements.txt
+      - name: Run intentional failure lab and validate raw JUnit
+        run: python tests/failure_lab/run_lab.py
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: negative-evidence-raw
+          path: |
+            test-results/negative-evidence/intentional-failure.xml
+            test-results/negative-evidence/receipt.json
+            test-results/negative-evidence/child-stdout.txt
+            test-results/negative-evidence/child-stderr.txt
+          if-no-files-found: error
+          retention-days: 14
+
+  negative-failure-identity:
+    needs: negative-evidence
+    if: always()
+    permissions:
+      contents: read
+      actions: read
+    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-junit-identity.yml@4dfda95d6573250477f991a0421fa6acb9bc0258
+    with:
+      expected-reports: '["negative-evidence-raw/intentional-failure.xml"]'
+      artifact-pattern: "negative-evidence-raw"
+      output-artifact: negative-failure-identity
+
   failure-identity:
     needs: [test, docker-integration, portability]
     if: always()
