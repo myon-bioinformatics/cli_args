@@ -101,6 +101,14 @@ APIはauth・stable schema・pagination・server-side filtering/search・mutatio
 
 詳細は [docs/minimal-transport-surface.md](docs/minimal-transport-surface.md) を参照してください。
 
+## 失敗を証拠として残す
+
+#1 では、探索中の失敗を単なるノイズとして捨てません。通常CIとは分離した **negative evidence / intentional failures** lane で、子pytestを意図的に失敗させ、raw JUnit・stdout・stderr・receiptを保存します。
+
+現在は pass / assertion failure / setup error / strict xfail / strict XPASS を明示的な testcase 名で固定し、子pytestが本当に非0終了し、JUnit上の分類も期待どおりであることを外側のvalidatorが確認します。その raw JUnit は通常の7-report collectorには混ぜず、専用の pinned shared failure-identity consumerへ渡します。
+
+この仕組みは「未知のfailureをexpected扱いにしてCIをgreenにする」ためのものではありません。expected failureを追加・変更する場合は testcase 名と期待分類を明示的に更新し、証跡差分としてreview可能にします。詳細は [tests/failure_lab/README.md](tests/failure_lab/README.md) を参照してください。
+
 ## 検証範囲
 
 証拠レベルを混同しません。
