@@ -1,0 +1,152 @@
+name: CLI tests
+on:
+  push:
+    paths-ignore:
+      - 'README.md'
+      - 'docs/**'
+      - 'tests/failure_lab/README.md'
+  pull_request:
+    paths-ignore:
+      - 'README.md'
+      - 'docs/**'
+      - 'tests/failure_lab/README.md'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        python: ['3.10', '3.12', '3.14']
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: ${{ matrix.python }}
+      - run: python -m pip install -r tests/requirements.txt
+      - run: python -S -c "import cli_args; assert cli_args.__all__"
+      - run: python -m pytest -q -ra --tb=short --junitxml=test-results/pytest-${{ matrix.python }}.xml
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: junit-py${{ matrix.python }}
+          path: test-results/pytest-${{ matrix.python }}.xml
+          if-no-files-found: error
+          retention-days: 14
+
+  docker-integration:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.14'
+      - run: python -m pip install -r tests/requirements.txt
+      - name: Build CLI integration image
+        run: docker build -f tests/docker/Dockerfile -t cli-args-test:ci .
+      - name: Verify Docker transport and Compose grammar
+        env:
+          CLI_ARGS_TEST_IMAGE: cli-args-test:ci
+        run: python -m pytest -q -ra --tb=short tests/test_docker_integration.py tests/test_docker_policy.py --junitxml=test-results/docker-integration.xml
+      - name: Run container-real CLI suite
+        run: >-
+          docker run --rm
+          -v "$PWD/test-results:/reports"
+          cli-args-test:ci
+          python -m pytest -q -ra --tb=short tests/test_container_commands.py tests/test_container_patterns.py
+          --junitxml=/reports/container-real.xml
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: junit-docker-integration
+          path: test-results/docker-integration.xml
+          if-no-files-found: error
+          retention-days: 14
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: junit-container-real
+          path: test-results/container-real.xml
+          if-no-files-found: error
+          retention-days: 14
+
+  portability:
+    name: core portability (${{ matrix.os }})
+    runs-on: ${{ matrix.runner }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows
+            runner: windows-latest
+          - os: macos
+            runner: macos-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r tests/requirements.txt
+      - run: python -S -c "import cli_args; assert cli_args.__all__"
+      - run: python -m pytest -q -ra --tb=short tests/test_cli_args.py tests/test_stdlib_commands.py tests/test_stdlib_functions.py tests/test_orchestration.py tests/test_observation_surface.py --junitxml=test-results/core-${{ matrix.os }}.xml
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: junit-core-${{ matrix.os }}
+          path: test-results/core-${{ matrix.os }}.xml
+          if-no-files-found: error
+          retention-days: 14
+
+
+  negative-evidence:
+    name: negative evidence / intentional failures
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-python@v7
+        with:
+          python-version: '3.12'
+      - run: python -m pip install -r tests/requirements.txt
+      - name: Run intentional failure lab and validate raw JUnit
+        run: python tests/failure_lab/run_lab.py
+      - uses: actions/upload-artifact@v7
+        if: always()
+        with:
+          name: negative-evidence-raw
+          path: |
+            test-results/negative-evidence/intentional-failure.xml
+            test-results/negative-evidence/receipt.json
+            test-results/negative-evidence/child-stdout.txt
+            test-results/negative-evidence/child-stderr.txt
+            test-results/negative-evidence/diagnostics.log
+          if-no-files-found: error
+          retention-days: 14
+
+  negative-failure-identity:
+    needs: negative-evidence
+    if: always()
+    permissions:
+      contents: read
+      actions: read
+    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-junit-identity.yml@4dfda95d6573250477f991a0421fa6acb9bc0258
+    with:
+      expected-reports: '["negative-evidence-raw/intentional-failure.xml"]'
+      artifact-pattern: "negative-evidence-raw"
+      output-artifact: negative-failure-identity
+
+  failure-identity:
+    needs: [test, docker-integration, portability]
+    if: always()
+    permissions:
+      contents: read
+      actions: read
+    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-junit-identity.yml@4dfda95d6573250477f991a0421fa6acb9bc0258
+    with:
+      expected-reports: '["junit-py3.10/pytest-3.10.xml","junit-py3.12/pytest-3.12.xml","junit-py3.14/pytest-3.14.xml","junit-docker-integration/docker-integration.xml","junit-container-real/container-real.xml","junit-core-windows/core-windows.xml","junit-core-macos/core-macos.xml"]'
+      artifact-pattern: "junit-*"
+      output-artifact: failure-identity
+
