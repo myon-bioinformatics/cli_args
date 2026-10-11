@@ -72,7 +72,7 @@ result = run_command(git, stdin=b"-leading name.txt\0", timeout=10)
 
 `run_command()` は同期・有限入力のみを扱い、stdinにファイルオブジェクトやiteratorは受け付けません。streaming/bidirectional batch protocolや長時間常駐プロセスには対応しません。dry-run時は型・UTF-8符号化を検証しますが、入力の中身を出力して秘密情報を漏らすことはしません。stdout/stderrの既存UTF-8 replacement policyとexit/timeout契約は変更しません。
 
-横断調査の実例：`flutter_navigation_basic` の標準入力JSON、`browser-test-kit` のstdinベースの子プロセステスト、`gh_identity` 等の外部CLIラッパー。引数解析・固有ドメインルール自体は各プロジェクトに残します。GitのNUL pathspecはcli_args側で**実Git検証**し、永続的な `git cat-file --batch-command` は construct-only のままです。
+横断調査の実例：`flutter_navigation_basic` の標準入力JSON、`browser-test-kit` のstdinベースの子プロセステスト、`gh_identity` 等の外部CLIラッパー。引数解析・固有ドメインルール自体は各プロジェクトに残します。GitのNUL pathspecおよび有限の `git cat-file --batch-command --buffer -Z` 呼出しは **実Git検証済み** です。ただし対話的・長時間常駐する双方向セッションは未対応です。
 
 ## 実行・出力
 
@@ -150,7 +150,7 @@ APIはauth・stable schema・pagination・server-side filtering/search・mutatio
 | Python / argparse | Host-real (3.10 / 3.12 / 3.14) | 真偽値・choices・required・排他・条件付き必須・不正入力、stdlib-only `python -S` import |
 | subprocess | Host-real | 空白・日本語・空文字・leading hyphen・shell風文字列・cwd・env・非ゼロ・timeout・不正UTF-8 |
 | pytest | Host-real | 複数file、`-q`、`--tb short`、`-k "a or b"`、明示 `--`、失敗結果 |
-| Git | Host-real + Container-real + Construct-only | temp repo、`-C`、`add --`、leading-hyphen/space/Unicode path、`ls-files -z`、`status --porcelain=v2 -z --branch`、`for-each-ref --format=...%00 --sort=...` を実測。`--pathspec-from-file=- --pathspec-file-nul` と `cat-file --batch-command --buffer -Z` は stdin/batch I/O 未実装のため exact argv のみ固定 |
+| Git | Host-real + Container-real + Construct-only | temp repo、`-C`、`add --`、leading-hyphen/space/Unicode path、`ls-files -z`、`status --porcelain=v2 -z --branch`、`for-each-ref --format=...%00 --sort=...` を実測。`--pathspec-from-file=- --pathspec-file-nul` と有限の `cat-file --batch-command --buffer -Z` 呼出しは実GitでNUL入出力検証済み。常駐・双方向セッションは未測定 |
 | curl | Host-real + Container-real | local HTTP、repeated header、empty option value、Unicode URL/output path、HTTP failureに加え、`--fail-with-body` でbodyを残したままexit 22、`--fail-early` の複数transfer停止、`--write-out %{http_code}` を実測 |
 | ls/coreutils | Host-real + Container-real | `ls` の複数flag・明示 `--`・leading-hyphen/space/Unicode filenameに加え、GNU `sort -z --stable` のNUL区切りrecord処理を実測 |
 | journalctl | Container-real + Construct-only | container内で実binary/versionを実行。repeated `-u` / since / until / `-n` / no-pager のexact argvを固定 |
@@ -164,7 +164,7 @@ APIはauth・stable schema・pagination・server-side filtering/search・mutatio
 | FFmpeg | Container-real | test-only imageにFFmpegを明示導入し、lavfiの極小音源を `-f lavfi -i ... -f null -` で処理。複数option/valueと特殊な `-` 出力を実測 |
 | uv | Construct-only | orgのPython matrixで使う `uv run --no-project --python ... --with ... python -m pytest` のnested argvを固定 |
 
-AI coding向けには、人間向け表示をparseするよりも **machine-readable / NUL-safe / fail-fast / structured-field** な既存CLI契約を優先します。Git porcelain v2・`-z`/`%00`、curlの診断系、gh API paginationのような「地味だが壊れにくい」引数は積極的に回帰証拠へ取り込みます。一方、stdin/batch protocolを必要とする便利機能は、実行primitiveが無い段階ではConstruct-onlyと明示し、実測済みとは扱いません。
+AI coding向けには、人間向け表示をparseするよりも **machine-readable / NUL-safe / fail-fast / structured-field** な既存CLI契約を優先します。Git porcelain v2・`-z`/`%00`、curlの診断系、gh API paginationのような「地味だが壊れにくい」引数は積極的に回帰証拠へ取り込みます。一方、双方向の対話的batch protocolは未実装であり、有限のstdin入力が通ることを常駐処理の動作保証に拡張しません。
 
 Host Python matrixは速いcore contractに限定し、Docker/systemd stateへ依存しません。Docker integration laneは `tests/docker/Dockerfile` の test-only image (`python:3.14.0-slim-bookworm`) をbuildし、host側のDocker transport/Compose検証とは別に、その中で同じ `cli_args.py` と pytest harnessを使ってGit/curl/ls/journalctl/FFmpegを検証します。`CLI_ARGS_CONTAINER_REAL=1` は test image 自体に埋め込まれ、CIや利用者が手動で切り替える必要はありません。Host matrixではそのmarkerが存在しないためcontainer-real suiteは自動skipし、Docker image内では自動有効になります。container-real suite は独立JUnitとして保存し、外側テスト1件へ証跡を畳み込みません。Docker image内のapt/pip依存はテスト基盤専用であり、`cli_args.py` のruntime依存ではありません。
 
