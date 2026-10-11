@@ -49,6 +49,31 @@ write_output(result, format="json")
 
 `pytest_command(paths, quiet=True, tb="short", summary=True, extra=[...])` は `python -m pytest -q --tb short -ra ...` を構築する任意のプリセットです。`paths` と `extra` も順序を持つ有限の `Sequence` 専用で、単一の `str` / `PathLike`、set/dict、generator は拒否します。pytestを本体からimportせず、自動インストールもしません。
 
+## stdin入力を明示的に渡す（他repo横断で回収）
+
+`run_command(command, stdin=...)` は任意の **str（UTF-8へ符号化）またはbytes（無変換）** を一度だけ子プロセスに渡します。末尾の改行は追加しません。shellは使いません。`None` は入力指定なしです。
+
+```python
+from cli_args import Command, run_command
+import sys
+
+# Flutter等のJSON stdinワーカー。生成したJSON文字列をそのまま渡す。
+result = run_command(
+    Command((sys.executable, "-S", "worker.py")),
+    stdin='{"operation":"inspect","values":["日本語"]}',
+    timeout=5,
+)
+assert result.returncode == 0
+
+# GitのNUL-safe pathspec。空白や先頭 - のある名前を正確に送る。
+git = Command(("git", "add", "--pathspec-from-file=-", "--pathspec-file-nul"))
+result = run_command(git, stdin=b"-leading name.txt\\0", timeout=10)
+```
+
+`run_command()` は同期・有限入力のみを扱い、stdinにファイルオブジェクトやiteratorは受け付けません。streaming/bidirectional batch protocolや長時間常駐プロセスには対応しません。dry-run時は型・UTF-8符号化を検証しますが、入力の中身を出力して秘密情報を漏らすことはしません。stdout/stderrの既存UTF-8 replacement policyとexit/timeout契約は変更しません。
+
+横断調査の実例：`flutter_navigation_basic` の標準入力JSON、`browser-test-kit` のstdinベースの子プロセステスト、`gh_identity` 等の外部CLIラッパー。引数解析・固有ドメインルール自体は各プロジェクトに残します。GitのNUL pathspecはcli_args側で**実Git検証**し、永続的な `git cat-file --batch-command` は construct-only のままです。
+
 ## 実行・出力
 
 ```bash
