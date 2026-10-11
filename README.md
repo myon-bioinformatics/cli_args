@@ -67,7 +67,7 @@ assert result.returncode == 0
 
 # GitのNUL-safe pathspec。空白や先頭 - のある名前を正確に送る。
 git = Command(("git", "add", "--pathspec-from-file=-", "--pathspec-file-nul"))
-result = run_command(git, stdin=b"-leading name.txt\\0", timeout=10)
+result = run_command(git, stdin=b"-leading name.txt\0", timeout=10)
 ```
 
 `run_command()` は同期・有限入力のみを扱い、stdinにファイルオブジェクトやiteratorは受け付けません。streaming/bidirectional batch protocolや長時間常駐プロセスには対応しません。dry-run時は型・UTF-8符号化を検証しますが、入力の中身を出力して秘密情報を漏らすことはしません。stdout/stderrの既存UTF-8 replacement policyとexit/timeout契約は変更しません。
