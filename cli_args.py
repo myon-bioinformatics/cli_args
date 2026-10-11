@@ -166,21 +166,26 @@ def _decode(value: bytes | None) -> str:
 
 def run_command(command: Command, *, cwd: str | os.PathLike[str] | None = None,
                 timeout: float | None = None, dry_run: bool = False,
-                env: Mapping[str, str] | None = None) -> CommandResult:
+                env: Mapping[str, str] | None = None,
+                stdin: str | bytes | None = None) -> CommandResult:
     """Capture UTF-8 text (replacement on invalid bytes), never use a shell.
 
     Nonzero exits are results. Launch failures raise OSError. Timeout returns
     partial output and no exit code. env, if provided, replaces the environment.
-    Output is buffered; streaming, binary output and process-tree cleanup are
-    outside this initial contract.
+    Input accepts explicit UTF-8 text or raw bytes (including NUL records).
+    No newline is appended. Output is buffered; streaming, binary output and
+    process-tree cleanup are outside this contract.
     """
     if timeout is not None and (not math.isfinite(timeout) or timeout <= 0):
         raise ValueError("timeout must be positive and finite")
+    if stdin is not None and not isinstance(stdin, (str, bytes)):
+        raise TypeError("stdin must be str, bytes, or None")
+    data = stdin.encode("utf-8") if isinstance(stdin, str) else stdin
     if dry_run:
         return CommandResult(command.argv, None, "", "", False)
     try:
         result = subprocess.run(command.argv, cwd=cwd, timeout=timeout, env=env,
-                                capture_output=True, shell=False, check=False)
+                                input=data, capture_output=True, shell=False, check=False)
     except subprocess.TimeoutExpired as exc:
         return CommandResult(command.argv, None, _decode(exc.stdout), _decode(exc.stderr),
                              True, True)
