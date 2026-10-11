@@ -261,3 +261,33 @@ def test_stdin_rejects_ambiguous_inputs_even_on_dry_run():
         run_command(command, stdin="\ud800", dry_run=True)
     dry = run_command(command, stdin="not executed", dry_run=True)
     assert not dry.executed and dry.returncode is None
+
+
+def test_stdin_preserves_nonzero_exit_stderr_and_empty_payload():
+    """Adding stdin must not recast nonzero subprocess exits as successful."""
+    command = Command((sys.executable, "-S", "-c",
+                       "import sys; data=sys.stdin.buffer.read(); "
+                       "sys.stdout.buffer.write(data); "
+                       "print('child-error', file=sys.stderr); sys.exit(9)"))
+    result = run_command(command, stdin=b"")
+    assert result.executed and not result.timed_out
+    assert result.returncode == 9
+    assert result.stdout == ""
+    assert result.stderr.strip() == "child-error"
+    result = run_command(command, stdin="some input")
+    assert result.returncode == 9
+    assert result.stdout == "some input"
+
+
+def test_stdin_timeout_keeps_partial_diagnostics():
+    """A finite stdin transaction still reports timeout and captured output."""
+    command = Command((sys.executable, "-S", "-c",
+                       "import sys,time; sys.stdin.buffer.read(); "
+                       "print('started', flush=True); "
+                       "print('diagnostic', file=sys.stderr, flush=True); "
+                       "time.sleep(30)"))
+    result = run_command(command, stdin=b"hello\0world", timeout=1)
+    assert result.executed and result.timed_out
+    assert result.returncode is None
+    assert "started" in result.stdout
+    assert "diagnostic" in result.stderr
