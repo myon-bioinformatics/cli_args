@@ -115,10 +115,10 @@ def test_git_machine_readable_porcelain_refs_and_batch_shapes(tmp_path):
     assert pathspec.argv[-3:] == (
         "add", "--pathspec-from-file=-", "--pathspec-file-nul",
     )
-    staged = run_command(pathspec, stdin=tricky.encode("utf-8") + b"\\0")
+    staged = run_command(pathspec, stdin=tricky.encode("utf-8") + b"\0")
     assert staged.returncode == 0, staged.stderr
     index = run_command(git.positional("ls-files", "-z"))
-    assert tricky in index.stdout.split("\\0")
+    assert tricky in index.stdout.split("\0")
     cat_file = git.positional("cat-file").flag("--batch-command").flag("--buffer").flag("-Z")
     assert cat_file.argv[-4:] == ("cat-file", "--batch-command", "--buffer", "-Z")
 
