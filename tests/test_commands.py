@@ -122,8 +122,16 @@ def test_git_machine_readable_porcelain_refs_and_batch_shapes(tmp_path):
     cat_file = git.positional("cat-file").flag("--batch-command").flag("--buffer").flag("-Z")
     assert cat_file.argv[-4:] == ("cat-file", "--batch-command", "--buffer", "-Z")
 
-    # cat-file's persistent/bidirectional protocol is not covered by a
-    # single communicate() call; retain exact argv only for that mode.
+    # A finite batch-command transaction is now real, including a NUL byte
+    # in the blob body. This is not evidence of a persistent interactive session.
+    payload = b"hello\\0world"
+    stored = run_command(git.positional("hash-object", "-w", "--stdin"), stdin=payload)
+    assert stored.returncode == 0, stored.stderr
+    oid = stored.stdout.strip()
+    assert len(oid) in (40, 64)
+    batch = run_command(cat_file, stdin=b"contents " + oid.encode("ascii") + b"\\0flush\\0")
+    assert batch.returncode == 0, batch.stderr
+    assert batch.stdout == oid + " blob 11\\0hello\\0world\\0"
 
 
 def test_ls_real_separator_space_unicode_and_leading_hyphen(tmp_path):
