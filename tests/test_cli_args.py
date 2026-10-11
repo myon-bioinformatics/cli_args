@@ -234,3 +234,30 @@ def test_pytest_preset():
                             "-k", "a or b", "a.py", "b.py")
     with pytest.raises(ValueError):
         pytest_command(tb="unknown")
+
+
+def test_stdin_text_and_binary_records_roundtrip(tmp_path):
+    """Flutter-style JSON input and git-style NUL records are distinct transports."""
+    command = Command((sys.executable, "-S", "-c",
+                       "import sys; data=sys.stdin.buffer.read(); sys.stdout.buffer.write(data)"))
+    text = '日本語・spaces and -leading\n'
+    encoded = run_command(command, stdin=text)
+    assert encoded.returncode == 0
+    assert encoded.stdout == text
+    assert encoded.stderr == ""
+    raw = b"file one\0-leading file\0\xff"
+    binary = run_command(command, stdin=raw)
+    assert binary.returncode == 0
+    assert binary.stdout == raw.decode("utf-8", errors="replace")
+    assert binary.stdout.count("\0") == 2
+
+
+def test_stdin_rejects_ambiguous_inputs_even_on_dry_run():
+    command = Command(("absent-executable",))
+    for invalid in (123, bytearray(b"x"), ["x"], Path("input.txt")):
+        with pytest.raises(TypeError, match="stdin must be"):
+            run_command(command, stdin=invalid, dry_run=True)
+    with pytest.raises(UnicodeEncodeError):
+        run_command(command, stdin="\ud800", dry_run=True)
+    dry = run_command(command, stdin="not executed", dry_run=True)
+    assert not dry.executed and dry.returncode is None
