@@ -103,9 +103,10 @@ def test_git_machine_readable_porcelain_refs_and_batch_shapes(tmp_path):
     assert "topic/日本語\0" in refs.stdout
     assert refs.stdout.count("\0") >= 4
 
-    # These two useful Git batch modes need stdin/batch I/O, which run_command
-    # intentionally does not claim yet. Keep their exact argv shape as
-    # construct-only evidence rather than pretending they were executed.
+    # The NUL pathspec now uses real binary stdin, protecting spaces and
+    # leading-hyphen filenames without command-string parsing.
+    tricky = "-NUL 日本語 file.txt"
+    (tmp_path / tricky).write_text("payload", encoding="utf-8")
     pathspec = (
         git.positional("add")
         .option("--pathspec-from-file", "-", attached=True)
@@ -114,8 +115,15 @@ def test_git_machine_readable_porcelain_refs_and_batch_shapes(tmp_path):
     assert pathspec.argv[-3:] == (
         "add", "--pathspec-from-file=-", "--pathspec-file-nul",
     )
+    staged = run_command(pathspec, stdin=tricky.encode("utf-8") + b"\\0")
+    assert staged.returncode == 0, staged.stderr
+    index = run_command(git.positional("ls-files", "-z"))
+    assert tricky in index.stdout.split("\\0")
     cat_file = git.positional("cat-file").flag("--batch-command").flag("--buffer").flag("-Z")
     assert cat_file.argv[-4:] == ("cat-file", "--batch-command", "--buffer", "-Z")
+
+    # cat-file's persistent/bidirectional protocol is not covered by a
+    # single communicate() call; retain exact argv only for that mode.
 
 
 def test_ls_real_separator_space_unicode_and_leading_hyphen(tmp_path):
