@@ -417,3 +417,29 @@ def test_exclusive_output_link_failure_keeps_destination_absent(tmp_path, monkey
         write_output({"ok": True}, format="json", output=destination, overwrite=False)
     assert not destination.exists()
     assert list(tmp_path.iterdir()) == []
+
+
+def test_bounded_small_flushed_overflow_without_waiting_for_eof():
+    """cap+1 byte followed by sleep must trigger overflow, not the timeout."""
+    import time
+
+    cap = 100
+    command = Command((sys.executable, "-S", "-c",
+                       "import os,time; os.write(1,b'x'*101); time.sleep(30)"))
+    started = time.monotonic()
+    result = run_command(command, max_output_bytes=cap, timeout=5)
+    assert time.monotonic() - started < 5
+    assert result.output_limited and not result.timed_out
+    assert result.returncode is None and result.executed
+    assert result.stdout == "x" * cap
+    assert result.stderr == ""
+
+
+def test_bounded_small_flushed_stderr_overflow():
+    """Both pipes must apply the same non-EOF-dependent limit."""
+    command = Command((sys.executable, "-S", "-c",
+                       "import os,time; os.write(2,b'e'*51); time.sleep(30)"))
+    result = run_command(command, max_output_bytes=50, timeout=5)
+    assert result.output_limited and not result.timed_out
+    assert result.returncode is None
+    assert result.stderr == "e" * 50
