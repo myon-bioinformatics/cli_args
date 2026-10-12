@@ -193,7 +193,10 @@ def _run_bounded(command: Command, data: bytes | None, *, cwd: str | os.PathLike
                     remaining[0] -= size
                     if size < len(chunk):
                         limited.set()
-                        process.kill()
+                        try:
+                            process.kill()
+                        except ProcessLookupError:
+                            pass
         finally:
             stream.close()
 
@@ -293,7 +296,10 @@ def write_output(value: Any, *, format: str = "text",
     if output is None:
         (sys.stdout if stream is None else stream).write(text)
     else:
-        Path(output).write_text(text, encoding="utf-8", newline="\n")
+        if type(overwrite) is not bool:
+            raise TypeError("overwrite must be bool")
+        with Path(output).open("w" if overwrite else "x", encoding="utf-8", newline="\n") as target:
+            target.write(text)
 
 
 def pytest_command(paths: Sequence[str] = (), *, quiet: bool = False,
