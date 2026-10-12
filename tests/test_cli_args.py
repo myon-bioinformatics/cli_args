@@ -291,3 +291,103 @@ def test_stdin_timeout_keeps_partial_diagnostics():
     assert result.returncode is None
     assert "started" in result.stdout
     assert "diagnostic" in result.stderr
+
+
+def test_exclusive_output_never_overwrites_existing_file_or_symlink(tmp_path):
+    original = tmp_path / "original.txt"
+    original.write_text("unchanged", encoding="utf-8")
+    link = tmp_path / "link.txt"
+    link.symlink_to(original)
+    dangling = tmp_path / "dangling.txt"
+    dangling.symlink_to(tmp_path / "absent.txt")
+    for output in (original, link, dangling):
+        with pytest.raises(FileExistsError):
+            write_output({"value": 1}, format="json", output=output, overwrite=False)
+    assert original.read_text(encoding="utf-8") == "unchanged"
+    assert link.is_symlink() and dangling.is_symlink()
+    assert not (tmp_path / "absent.txt").exists()
+    fresh = tmp_path / "new.json"
+    write_output({"title": "日本語"}, format="json", output=fresh, overwrite=False)
+    assert json.loads(fresh.read_text(encoding="utf-8"))["title"] == "日本語"
+    assert b"\r\n" not in fresh.read_bytes()
+    with pytest.raises(TypeError, match="overwrite"):
+        write_output("x", output=fresh, overwrite="false")
+
+
+def test_exclusive_output_renders_before_file_creation(tmp_path):
+    target = tmp_path / "new.json"
+    with pytest.raises(TypeError):
+        write_output(object(), format="json", output=target, overwrite=False)
+    assert not target.exists()
+
+
+def test_bounded_command_exact_limit_and_combined_overflow():
+    command = Command((sys.executable, "-S", "-c",
+                       "import sys; sys.stdout.buffer.write(b'01234'); "
+                       "sys.stdout.flush(); sys.stderr.buffer.write(b'67890'); "
+                       "sys.stderr.flush()"))
+    exact = run_command(command, max_output_bytes=10, timeout=5)
+    assert exact.returncode == 0
+    assert not exact.output_limited and not exact.timed_out
+    assert exact.stdout == "01234" and exact.stderr == "67890"
+    exceeded = run_command(command, max_output_bytes=9, timeout=5)
+    assert exceeded.output_limited and exceeded.executed
+    assert exceeded.returncode is None
+    assert len(exceeded.stdout.encode("utf-8") + exceeded.stderr.encode("utf-8")) == 9
+    payload = json.loads(render_output(exceeded, format="json"))
+    assert payload["output_limited"] is True
+    assert payload["returncode"] is None
+
+
+def test_bounded_zero_limit_and_stdin_utf8():
+    command = Command((sys.executable, "-S", "-c",
+                       "import sys; sys.stdout.buffer.write(sys.stdin.buffer.read())"))
+    assert run_command(command, stdin=b"", max_output_bytes=0).returncode == 0
+    exceeded = run_command(command, stdin="日本語", max_output_bytes=0, timeout=5)
+    assert exceeded.output_limited and exceeded.returncode is None
+    assert exceeded.stdout == ""
+    ok = run_command(command, stdin="日本語", max_output_bytes=9, timeout=5)
+    assert ok.returncode == 0 and ok.stdout == "日本語"
+    for invalid in (-1, True, 1.2, "10"):
+        with pytest.raises(ValueError, match="max_output_bytes"):
+            run_command(command, max_output_bytes=invalid, dry_run=True)
+
+
+def test_bounded_child_terminates_excessive_output():
+    command = Command((sys.executable, "-S", "-c",
+                       "import os; [os.write(1,b'x'*4096) for _ in range(5000)]"))
+    result = run_command(command, max_output_bytes=1024, timeout=8)
+    assert result.output_limited and not result.timed_out
+    assert len(result.stdout) <= 1024
+    assert result.returncode is None
+
+
+def test_bounded_timeout_retains_partial_stdout_and_stderr():
+    command = Command((sys.executable, "-S", "-c",
+                       "import sys,time; print('started',flush=True); "
+                       "print('warning',file=sys.stderr,flush=True); time.sleep(30)"))
+    result = run_command(command, max_output_bytes=100, timeout=1)
+    assert result.timed_out and not result.output_limited
+    assert result.returncode is None
+    assert "started" in result.stdout and "warning" in result.stderr
+
+
+def test_example_no_overwrite_and_bounded_output_exit_codes(tmp_path):
+    runner = Command((sys.executable, "-S", str(ROOT / "examples/run_cli.py")))
+    target = tmp_path / "out.txt"
+    target.write_text("keep", encoding="utf-8")
+    refused = run_command(runner.positional(
+        "--no-overwrite", "--output", target, "--",
+        sys.executable, "-S", "-c", "print('hello')"))
+    assert refused.returncode == 1
+    assert target.read_text(encoding="utf-8") == "keep"
+    blocked = run_command(runner.positional(
+        "--max-output-bytes", "3", "--",
+        sys.executable, "-S", "-c", "print('excess')"))
+    assert blocked.returncode == 125
+    assert "output limit exceeded" in blocked.stderr
+    okay = run_command(runner.positional(
+        "--no-overwrite", "--output", tmp_path / "new.txt", "--",
+        sys.executable, "-S", "-c", "print('ok')"))
+    assert okay.returncode == 0
+    assert (tmp_path / "new.txt").read_text(encoding="utf-8") == "ok\n"
