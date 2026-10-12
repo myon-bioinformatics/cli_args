@@ -14,6 +14,7 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
 from threading import Event, Lock, Thread
 from typing import Any, Iterable, Mapping, Sequence, TextIO
 
@@ -291,15 +292,26 @@ def write_output(value: Any, *, format: str = "text",
                  output: str | os.PathLike[str] | None = None,
                  stream: TextIO | None = None,
                  overwrite: bool = True) -> None:
-    """Render before writing. overwrite=False uses exclusive creation; no unlink."""
+    """Render before writing; exclusive hard-link publication for new output."""
     text = render_output(value, format=format)
     if output is None:
         (sys.stdout if stream is None else stream).write(text)
     else:
         if type(overwrite) is not bool:
             raise TypeError("overwrite must be bool")
-        with Path(output).open("w" if overwrite else "x", encoding="utf-8", newline="\n") as target:
-            target.write(text)
+        destination = Path(output)
+        if overwrite:
+            destination.write_text(text, encoding="utf-8", newline="\n")
+        else:
+            # On Windows, x-mode alone may follow a dangling symlink.
+            # Stage complete bytes then publish with an exclusive hard link.
+            # Filesystems without hard links fail closed; never unlink the target.
+            if os.path.lexists(destination):
+                raise FileExistsError("destination already exists: " + str(destination))
+            with tempfile.TemporaryDirectory(prefix=".cli-args-", dir=destination.parent) as work:
+                staged = Path(work) / "complete.txt"
+                staged.write_text(text, encoding="utf-8", newline="\n")
+                os.link(staged, destination)
 
 
 def pytest_command(paths: Sequence[str] = (), *, quiet: bool = False,
