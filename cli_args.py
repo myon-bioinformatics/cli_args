@@ -183,7 +183,10 @@ def _run_bounded(command: Command, data: bytes | None, *, cwd: str | os.PathLike
     def reader(stream, index):
         try:
             while True:
-                chunk = stream.read(4096)
+                # BufferedReader.read(size) may wait for size/EOF even after a
+                # smaller flushed write. read1() returns available pipe bytes
+                # from one underlying read so cap+1 is detected promptly.
+                chunk = stream.read1(min(4096, remaining[0] + 1) if not limited.is_set() else 4096)
                 if not chunk:
                     break
                 with lock:
