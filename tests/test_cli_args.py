@@ -399,3 +399,21 @@ def test_example_no_overwrite_and_bounded_output_exit_codes(tmp_path):
         sys.executable, "-S", "-c", "print('ok')"))
     assert okay.returncode == 0
     assert (tmp_path / "new.txt").read_text(encoding="utf-8") == "ok\n"
+
+
+
+def test_exclusive_output_link_failure_keeps_destination_absent(tmp_path, monkeypatch):
+    """An unsupported filesystem or publication failure must not leak a partial target."""
+    import cli_args
+
+    def deny_link(source, destination):
+        assert Path(source).is_file()
+        assert not Path(destination).exists()
+        raise OSError("hard links not supported")
+
+    monkeypatch.setattr(cli_args.os, "link", deny_link)
+    destination = tmp_path / "result.json"
+    with pytest.raises(OSError, match="hard links not supported"):
+        write_output({"ok": True}, format="json", output=destination, overwrite=False)
+    assert not destination.exists()
+    assert list(tmp_path.iterdir()) == []
