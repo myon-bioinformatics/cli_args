@@ -74,6 +74,21 @@ result = run_command(git, stdin=b"-leading name.txt\0", timeout=10)
 
 横断調査の実例：`flutter_navigation_basic` の標準入力JSON、`browser-test-kit` のstdinベースの子プロセステスト、`gh_identity` 等の外部CLIラッパー。引数解析・固有ドメインルール自体は各プロジェクトに残します。GitのNUL pathspecおよび有限の `git cat-file --batch-command --buffer -Z` 呼出しは **実Git検証済み** です。ただし対話的・長時間常駐する双方向セッションは未対応です。
 
+## 出力保護とバイト上限
+
+`write_output(..., overwrite=False)` は**既存のパスを上書きしない**ためのopt-inです。既存ファイル、シンボリックリンク、リンク切れシンボリックリンクに対して `FileExistsError` を返し、対象を削除しません。出力内容を事前にレンダリングし、ファイルは排他的に作成します。既定 `overwrite=True` の従来動作は維持します。途中の書き込み失敗に対する原子的なロールバック・fsync・既存ディレクトリの自動作成は保証しません。
+
+`run_command(..., max_output_bytes=N)` は stdout/stderr の**合計生バイト数**を上限として捕捉し、超過したら子プロセスを停止します。メモリ上に保存する出力は合計Nバイト以下で、`CommandResult.output_limited=True`、`returncode=None` により通常の成功と区別します。既定 `None` は以前の非制限モードです。省略時の既存JSON形式も維持します。超過時は表示がUTF-8文字の途中で切れる場合があり、decodeは既存どおり `errors="replace"` です。監視対象は起動した子プロセスのみで、子孫プロセス全体の停止は保証しません。
+
+```python
+result = run_command(Command(("git", "status")), max_output_bytes=65536, timeout=10)
+if result.output_limited:
+    raise RuntimeError("command output exceeded limit")
+write_output({"ok": True}, format="json", output="result.json", overwrite=False)
+```
+
+`examples/run_cli.py` は `--max-output-bytes N`、`--no-overwrite` を公開します。出力超過は **exit 125**、タイムアウトは従来どおり **124**、ファイル作成不可は **1** です。入力はCLI側の`--`より前、外部コマンドargvは後ろです。
+
 ## 実行・出力
 
 ```bash
@@ -89,7 +104,7 @@ python -S examples/run_cli.py --format json --output result.json --timeout 30 --
 - JSONは実行結果の封筒です。Git・curl等のstdoutを自動で業務データに変換しません。
 - textの実行結果はstdoutそのままです。`run_command()` が捕捉したstdout/stderrはUTF-8 decodeのみ行い、子プロセスが出した改行 (`\n` / `\r\n`) は正規化しません。ライブラリ利用者はstderrと終了状態を確認してください。例のCLIはstderrも表示し、非ゼロ終了を伝え、タイムアウト124・実行ファイル不在127で終了します。`--output` の書込みに失敗した場合（親ディレクトリ不存在・権限不足等）は traceback を出さず `failed to write output: ...` をstderrへ出して終了1にします。
 - 保存はUTF-8・LF (`\n`) 固定・既存ファイル上書きです。Windowsを含め改行バイトをLFに固定します。親ディレクトリは作成しません。JSON変換に成功してから書き込みますが、原子的な保存ではありません。
-- 出力をメモリに保持します。巨大出力、バイナリ、対話的stdin、ストリーミング、子孫プロセス全体の停止は初期版の対象外です。
+- 既定の非制限実行は出力をメモリに保持します。大量出力は `max_output_bytes` の明示指定で制限できます。バイナリのlossless出力、対話的stdin、ストリーミング、子孫プロセス全体の停止は対象外です。
 - `env` 指定は環境全体の置換です。継承する場合は呼び出し側で `os.environ` と合成してください。
 
 ## 標準ライブラリを第3のCLI面として使う
