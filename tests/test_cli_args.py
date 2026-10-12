@@ -297,14 +297,22 @@ def test_exclusive_output_never_overwrites_existing_file_or_symlink(tmp_path):
     original = tmp_path / "original.txt"
     original.write_text("unchanged", encoding="utf-8")
     link = tmp_path / "link.txt"
-    link.symlink_to(original)
     dangling = tmp_path / "dangling.txt"
-    dangling.symlink_to(tmp_path / "absent.txt")
-    for output in (original, link, dangling):
+    paths = [original]
+    try:
+        link.symlink_to(original)
+        dangling.symlink_to(tmp_path / "absent.txt")
+    except (OSError, NotImplementedError):
+        # On Windows without symlink privilege, keep the regular-file contract.
+        pass
+    else:
+        paths.extend((link, dangling))
+    for output in paths:
         with pytest.raises(FileExistsError):
             write_output({"value": 1}, format="json", output=output, overwrite=False)
     assert original.read_text(encoding="utf-8") == "unchanged"
-    assert link.is_symlink() and dangling.is_symlink()
+    if link in paths:
+        assert link.is_symlink() and dangling.is_symlink()
     assert not (tmp_path / "absent.txt").exists()
     fresh = tmp_path / "new.json"
     write_output({"title": "日本語"}, format="json", output=fresh, overwrite=False)
