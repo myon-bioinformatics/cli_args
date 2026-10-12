@@ -234,3 +234,212 @@ def test_pytest_preset():
                             "-k", "a or b", "a.py", "b.py")
     with pytest.raises(ValueError):
         pytest_command(tb="unknown")
+
+
+def test_stdin_text_and_binary_records_roundtrip(tmp_path):
+    """Flutter-style JSON input and git-style NUL records are distinct transports."""
+    command = Command((sys.executable, "-S", "-c",
+                       "import sys; data=sys.stdin.buffer.read(); sys.stdout.buffer.write(data)"))
+    text = '日本語・spaces and -leading\n'
+    encoded = run_command(command, stdin=text)
+    assert encoded.returncode == 0
+    assert encoded.stdout == text
+    assert encoded.stderr == ""
+    raw = b"file one\0-leading file\0\xff"
+    binary = run_command(command, stdin=raw)
+    assert binary.returncode == 0
+    assert binary.stdout == raw.decode("utf-8", errors="replace")
+    assert binary.stdout.count("\0") == 2
+
+
+def test_stdin_rejects_ambiguous_inputs_even_on_dry_run():
+    command = Command(("absent-executable",))
+    for invalid in (123, bytearray(b"x"), ["x"], Path("input.txt")):
+        with pytest.raises(TypeError, match="stdin must be"):
+            run_command(command, stdin=invalid, dry_run=True)
+    with pytest.raises(UnicodeEncodeError):
+        run_command(command, stdin="\ud800", dry_run=True)
+    dry = run_command(command, stdin="not executed", dry_run=True)
+    assert not dry.executed and dry.returncode is None
+
+
+def test_stdin_preserves_nonzero_exit_stderr_and_empty_payload():
+    """Adding stdin must not recast nonzero subprocess exits as successful."""
+    command = Command((sys.executable, "-S", "-c",
+                       "import sys; data=sys.stdin.buffer.read(); "
+                       "sys.stdout.buffer.write(data); "
+                       "print('child-error', file=sys.stderr); sys.exit(9)"))
+    result = run_command(command, stdin=b"")
+    assert result.executed and not result.timed_out
+    assert result.returncode == 9
+    assert result.stdout == ""
+    assert result.stderr.strip() == "child-error"
+    result = run_command(command, stdin="some input")
+    assert result.returncode == 9
+    assert result.stdout == "some input"
+
+
+def test_stdin_timeout_keeps_partial_diagnostics():
+    """A finite stdin transaction still reports timeout and captured output."""
+    command = Command((sys.executable, "-S", "-c",
+                       "import sys,time; sys.stdin.buffer.read(); "
+                       "print('started', flush=True); "
+                       "print('diagnostic', file=sys.stderr, flush=True); "
+                       "time.sleep(30)"))
+    result = run_command(command, stdin=b"hello\0world", timeout=1)
+    assert result.executed and result.timed_out
+    assert result.returncode is None
+    assert "started" in result.stdout
+    assert "diagnostic" in result.stderr
+
+
+def test_exclusive_output_never_overwrites_existing_file_or_symlink(tmp_path):
+    original = tmp_path / "original.txt"
+    original.write_text("unchanged", encoding="utf-8")
+    link = tmp_path / "link.txt"
+    dangling = tmp_path / "dangling.txt"
+    paths = [original]
+    try:
+        link.symlink_to(original)
+        dangling.symlink_to(tmp_path / "absent.txt")
+    except (OSError, NotImplementedError):
+        # On Windows without symlink privilege, keep the regular-file contract.
+        pass
+    else:
+        paths.extend((link, dangling))
+    for output in paths:
+        with pytest.raises(FileExistsError):
+            write_output({"value": 1}, format="json", output=output, overwrite=False)
+    assert original.read_text(encoding="utf-8") == "unchanged"
+    if link in paths:
+        assert link.is_symlink() and dangling.is_symlink()
+    assert not (tmp_path / "absent.txt").exists()
+    fresh = tmp_path / "new.json"
+    write_output({"title": "日本語"}, format="json", output=fresh, overwrite=False)
+    assert json.loads(fresh.read_text(encoding="utf-8"))["title"] == "日本語"
+    assert b"\r\n" not in fresh.read_bytes()
+    with pytest.raises(TypeError, match="overwrite"):
+        write_output("x", output=fresh, overwrite="false")
+
+
+def test_exclusive_output_renders_before_file_creation(tmp_path):
+    target = tmp_path / "new.json"
+    with pytest.raises(TypeError):
+        write_output(object(), format="json", output=target, overwrite=False)
+    assert not target.exists()
+
+
+def test_bounded_command_exact_limit_and_combined_overflow():
+    command = Command((sys.executable, "-S", "-c",
+                       "import sys; sys.stdout.buffer.write(b'01234'); "
+                       "sys.stdout.flush(); sys.stderr.buffer.write(b'67890'); "
+                       "sys.stderr.flush()"))
+    exact = run_command(command, max_output_bytes=10, timeout=5)
+    assert exact.returncode == 0
+    assert not exact.output_limited and not exact.timed_out
+    assert exact.stdout == "01234" and exact.stderr == "67890"
+    exceeded = run_command(command, max_output_bytes=9, timeout=5)
+    assert exceeded.output_limited and exceeded.executed
+    assert exceeded.returncode is None
+    assert len(exceeded.stdout.encode("utf-8") + exceeded.stderr.encode("utf-8")) == 9
+    payload = json.loads(render_output(exceeded, format="json"))
+    assert payload["output_limited"] is True
+    assert payload["returncode"] is None
+
+
+def test_bounded_zero_limit_and_stdin_utf8():
+    command = Command((sys.executable, "-S", "-c",
+                       "import sys; sys.stdout.buffer.write(sys.stdin.buffer.read())"))
+    assert run_command(command, stdin=b"", max_output_bytes=0).returncode == 0
+    exceeded = run_command(command, stdin="日本語", max_output_bytes=0, timeout=5)
+    assert exceeded.output_limited and exceeded.returncode is None
+    assert exceeded.stdout == ""
+    ok = run_command(command, stdin="日本語", max_output_bytes=9, timeout=5)
+    assert ok.returncode == 0 and ok.stdout == "日本語"
+    for invalid in (-1, True, 1.2, "10"):
+        with pytest.raises(ValueError, match="max_output_bytes"):
+            run_command(command, max_output_bytes=invalid, dry_run=True)
+
+
+def test_bounded_child_terminates_excessive_output():
+    command = Command((sys.executable, "-S", "-c",
+                       "import os; [os.write(1,b'x'*4096) for _ in range(5000)]"))
+    result = run_command(command, max_output_bytes=1024, timeout=8)
+    assert result.output_limited and not result.timed_out
+    assert len(result.stdout) <= 1024
+    assert result.returncode is None
+
+
+def test_bounded_timeout_retains_partial_stdout_and_stderr():
+    command = Command((sys.executable, "-S", "-c",
+                       "import sys,time; print('started',flush=True); "
+                       "print('warning',file=sys.stderr,flush=True); time.sleep(30)"))
+    result = run_command(command, max_output_bytes=100, timeout=1)
+    assert result.timed_out and not result.output_limited
+    assert result.returncode is None
+    assert "started" in result.stdout and "warning" in result.stderr
+
+
+def test_example_no_overwrite_and_bounded_output_exit_codes(tmp_path):
+    runner = Command((sys.executable, "-S", str(ROOT / "examples/run_cli.py")))
+    target = tmp_path / "out.txt"
+    target.write_text("keep", encoding="utf-8")
+    refused = run_command(runner.positional(
+        "--no-overwrite", "--output", target, "--",
+        sys.executable, "-S", "-c", "print('hello')"))
+    assert refused.returncode == 1
+    assert target.read_text(encoding="utf-8") == "keep"
+    blocked = run_command(runner.positional(
+        "--max-output-bytes", "3", "--",
+        sys.executable, "-S", "-c", "print('excess')"))
+    assert blocked.returncode == 125
+    assert "output limit exceeded" in blocked.stderr
+    okay = run_command(runner.positional(
+        "--no-overwrite", "--output", tmp_path / "new.txt", "--",
+        sys.executable, "-S", "-c", "print('ok')"))
+    assert okay.returncode == 0
+    assert (tmp_path / "new.txt").read_text(encoding="utf-8") == "ok\n"
+
+
+
+def test_exclusive_output_link_failure_keeps_destination_absent(tmp_path, monkeypatch):
+    """An unsupported filesystem or publication failure must not leak a partial target."""
+    import cli_args
+
+    def deny_link(source, destination):
+        assert Path(source).is_file()
+        assert not Path(destination).exists()
+        raise OSError("hard links not supported")
+
+    monkeypatch.setattr(cli_args.os, "link", deny_link)
+    destination = tmp_path / "result.json"
+    with pytest.raises(OSError, match="hard links not supported"):
+        write_output({"ok": True}, format="json", output=destination, overwrite=False)
+    assert not destination.exists()
+    assert list(tmp_path.iterdir()) == []
+
+
+def test_bounded_small_flushed_overflow_without_waiting_for_eof():
+    """cap+1 byte followed by sleep must trigger overflow, not the timeout."""
+    import time
+
+    cap = 100
+    command = Command((sys.executable, "-S", "-c",
+                       "import os,time; os.write(1,b'x'*101); time.sleep(30)"))
+    started = time.monotonic()
+    result = run_command(command, max_output_bytes=cap, timeout=5)
+    assert time.monotonic() - started < 5
+    assert result.output_limited and not result.timed_out
+    assert result.returncode is None and result.executed
+    assert result.stdout == "x" * cap
+    assert result.stderr == ""
+
+
+def test_bounded_small_flushed_stderr_overflow():
+    """Both pipes must apply the same non-EOF-dependent limit."""
+    command = Command((sys.executable, "-S", "-c",
+                       "import os,time; os.write(2,b'e'*51); time.sleep(30)"))
+    result = run_command(command, max_output_bytes=50, timeout=5)
+    assert result.output_limited and not result.timed_out
+    assert result.returncode is None
+    assert result.stderr == "e" * 50

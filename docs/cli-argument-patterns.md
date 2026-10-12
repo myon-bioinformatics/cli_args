@@ -148,7 +148,7 @@ Some excellent CLI features require non-interactive stdin or a batch protocol:
 - `xargs -0` from stdin
 
 These are valuable, but `cli_args` must not claim them as real execution until its runtime contract deliberately
-supports bounded stdin/batch input. Until then, keep exact argv as **Construct-only** evidence.
+supports bounded stdin/batch input. **Current evidence:** real Git NUL-separated `--pathspec-from-file=- --pathspec-file-nul` and a finite `cat-file --batch-command --buffer -Z` transaction run via `run_command(stdin=bytes)`. Persistent bidirectional sessions and unlimited streaming remain **unverified**, not implied by finite batch success.
 
 ## Rule of thumb for AI coding
 

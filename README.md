@@ -49,6 +49,46 @@ write_output(result, format="json")
 
 `pytest_command(paths, quiet=True, tb="short", summary=True, extra=[...])` は `python -m pytest -q --tb short -ra ...` を構築する任意のプリセットです。`paths` と `extra` も順序を持つ有限の `Sequence` 専用で、単一の `str` / `PathLike`、set/dict、generator は拒否します。pytestを本体からimportせず、自動インストールもしません。
 
+## stdin入力を明示的に渡す（他repo横断で回収）
+
+`run_command(command, stdin=...)` は任意の **str（UTF-8へ符号化）またはbytes（無変換）** を一度だけ子プロセスに渡します。末尾の改行は追加しません。shellは使いません。`None` は入力指定なしです。
+
+```python
+from cli_args import Command, run_command
+import sys
+
+# Flutter等のJSON stdinワーカー。生成したJSON文字列をそのまま渡す。
+result = run_command(
+    Command((sys.executable, "-S", "worker.py")),
+    stdin='{"operation":"inspect","values":["日本語"]}',
+    timeout=5,
+)
+assert result.returncode == 0
+
+# GitのNUL-safe pathspec。空白や先頭 - のある名前を正確に送る。
+git = Command(("git", "add", "--pathspec-from-file=-", "--pathspec-file-nul"))
+result = run_command(git, stdin=b"-leading name.txt\0", timeout=10)
+```
+
+`run_command()` は同期・有限入力のみを扱い、stdinにファイルオブジェクトやiteratorは受け付けません。streaming/bidirectional batch protocolや長時間常駐プロセスには対応しません。dry-run時は型・UTF-8符号化を検証しますが、入力の中身を出力して秘密情報を漏らすことはしません。stdout/stderrの既存UTF-8 replacement policyとexit/timeout契約は変更しません。
+
+横断調査の実例：`flutter_navigation_basic` の標準入力JSON、`browser-test-kit` のstdinベースの子プロセステスト、`gh_identity` 等の外部CLIラッパー。引数解析・固有ドメインルール自体は各プロジェクトに残します。GitのNUL pathspecおよび有限の `git cat-file --batch-command --buffer -Z` 呼出しは **実Git検証済み** です。ただし対話的・長時間常駐する双方向セッションは未対応です。
+
+## 出力保護とバイト上限
+
+`write_output(..., overwrite=False)` は**既存のパスを上書きしない**ためのopt-inです。既存ファイル、シンボリックリンク、リンク切れシンボリックリンクに対して `FileExistsError` を返し、対象を削除しません。出力内容を事前にレンダリングし、出力先と同じディレクトリに一時保存してから排他的なハードリンクで公開します。既定 `overwrite=True` の従来動作は維持します。ハードリンク非対応のファイルシステムでは安全側に失敗します。新規パスの可視化は原子的ですが、クラッシュ耐久性・fsync・公開後の第三者変更防止・既存ディレクトリの自動作成は保証しません。
+
+`run_command(..., max_output_bytes=N)` は stdout/stderr の**合計生バイト数**を上限として捕捉し、超過したら子プロセスを停止します。メモリ上に保存する出力は合計Nバイト以下で、`CommandResult.output_limited=True`、`returncode=None` により通常の成功と区別します。既定 `None` は以前の非制限モードです。省略時の既存JSON形式も維持します。超過時は表示がUTF-8文字の途中で切れる場合があり、decodeは既存どおり `errors="replace"` です。監視対象は起動した子プロセスのみで、子孫プロセス全体の停止は保証しません。
+
+```python
+result = run_command(Command(("git", "status")), max_output_bytes=65536, timeout=10)
+if result.output_limited:
+    raise RuntimeError("command output exceeded limit")
+write_output({"ok": True}, format="json", output="result.json", overwrite=False)
+```
+
+`examples/run_cli.py` は `--max-output-bytes N`、`--no-overwrite` を公開します。出力超過は **exit 125**、タイムアウトは従来どおり **124**、ファイル作成不可は **1** です。入力はCLI側の`--`より前、外部コマンドargvは後ろです。
+
 ## 実行・出力
 
 ```bash
@@ -64,7 +104,7 @@ python -S examples/run_cli.py --format json --output result.json --timeout 30 --
 - JSONは実行結果の封筒です。Git・curl等のstdoutを自動で業務データに変換しません。
 - textの実行結果はstdoutそのままです。`run_command()` が捕捉したstdout/stderrはUTF-8 decodeのみ行い、子プロセスが出した改行 (`\n` / `\r\n`) は正規化しません。ライブラリ利用者はstderrと終了状態を確認してください。例のCLIはstderrも表示し、非ゼロ終了を伝え、タイムアウト124・実行ファイル不在127で終了します。`--output` の書込みに失敗した場合（親ディレクトリ不存在・権限不足等）は traceback を出さず `failed to write output: ...` をstderrへ出して終了1にします。
 - 保存はUTF-8・LF (`\n`) 固定・既存ファイル上書きです。Windowsを含め改行バイトをLFに固定します。親ディレクトリは作成しません。JSON変換に成功してから書き込みますが、原子的な保存ではありません。
-- 出力をメモリに保持します。巨大出力、バイナリ、対話的stdin、ストリーミング、子孫プロセス全体の停止は初期版の対象外です。
+- 既定の非制限実行は出力をメモリに保持します。大量出力は `max_output_bytes` の明示指定で制限できます。バイナリのlossless出力、対話的stdin、ストリーミング、子孫プロセス全体の停止は対象外です。
 - `env` 指定は環境全体の置換です。継承する場合は呼び出し側で `os.environ` と合成してください。
 
 ## 標準ライブラリを第3のCLI面として使う
@@ -125,7 +165,7 @@ APIはauth・stable schema・pagination・server-side filtering/search・mutatio
 | Python / argparse | Host-real (3.10 / 3.12 / 3.14) | 真偽値・choices・required・排他・条件付き必須・不正入力、stdlib-only `python -S` import |
 | subprocess | Host-real | 空白・日本語・空文字・leading hyphen・shell風文字列・cwd・env・非ゼロ・timeout・不正UTF-8 |
 | pytest | Host-real | 複数file、`-q`、`--tb short`、`-k "a or b"`、明示 `--`、失敗結果 |
-| Git | Host-real + Container-real + Construct-only | temp repo、`-C`、`add --`、leading-hyphen/space/Unicode path、`ls-files -z`、`status --porcelain=v2 -z --branch`、`for-each-ref --format=...%00 --sort=...` を実測。`--pathspec-from-file=- --pathspec-file-nul` と `cat-file --batch-command --buffer -Z` は stdin/batch I/O 未実装のため exact argv のみ固定 |
+| Git | Host-real + Container-real + Construct-only | temp repo、`-C`、`add --`、leading-hyphen/space/Unicode path、`ls-files -z`、`status --porcelain=v2 -z --branch`、`for-each-ref --format=...%00 --sort=...` を実測。`--pathspec-from-file=- --pathspec-file-nul` と有限の `cat-file --batch-command --buffer -Z` 呼出しは実GitでNUL入出力検証済み。常駐・双方向セッションは未測定 |
 | curl | Host-real + Container-real | local HTTP、repeated header、empty option value、Unicode URL/output path、HTTP failureに加え、`--fail-with-body` でbodyを残したままexit 22、`--fail-early` の複数transfer停止、`--write-out %{http_code}` を実測 |
 | ls/coreutils | Host-real + Container-real | `ls` の複数flag・明示 `--`・leading-hyphen/space/Unicode filenameに加え、GNU `sort -z --stable` のNUL区切りrecord処理を実測 |
 | journalctl | Container-real + Construct-only | container内で実binary/versionを実行。repeated `-u` / since / until / `-n` / no-pager のexact argvを固定 |
@@ -139,7 +179,7 @@ APIはauth・stable schema・pagination・server-side filtering/search・mutatio
 | FFmpeg | Container-real | test-only imageにFFmpegを明示導入し、lavfiの極小音源を `-f lavfi -i ... -f null -` で処理。複数option/valueと特殊な `-` 出力を実測 |
 | uv | Construct-only | orgのPython matrixで使う `uv run --no-project --python ... --with ... python -m pytest` のnested argvを固定 |
 
-AI coding向けには、人間向け表示をparseするよりも **machine-readable / NUL-safe / fail-fast / structured-field** な既存CLI契約を優先します。Git porcelain v2・`-z`/`%00`、curlの診断系、gh API paginationのような「地味だが壊れにくい」引数は積極的に回帰証拠へ取り込みます。一方、stdin/batch protocolを必要とする便利機能は、実行primitiveが無い段階ではConstruct-onlyと明示し、実測済みとは扱いません。
+AI coding向けには、人間向け表示をparseするよりも **machine-readable / NUL-safe / fail-fast / structured-field** な既存CLI契約を優先します。Git porcelain v2・`-z`/`%00`、curlの診断系、gh API paginationのような「地味だが壊れにくい」引数は積極的に回帰証拠へ取り込みます。一方、双方向の対話的batch protocolは未実装であり、有限のstdin入力が通ることを常駐処理の動作保証に拡張しません。
 
 Host Python matrixは速いcore contractに限定し、Docker/systemd stateへ依存しません。Docker integration laneは `tests/docker/Dockerfile` の test-only image (`python:3.14.0-slim-bookworm`) をbuildし、host側のDocker transport/Compose検証とは別に、その中で同じ `cli_args.py` と pytest harnessを使ってGit/curl/ls/journalctl/FFmpegを検証します。`CLI_ARGS_CONTAINER_REAL=1` は test image 自体に埋め込まれ、CIや利用者が手動で切り替える必要はありません。Host matrixではそのmarkerが存在しないためcontainer-real suiteは自動skipし、Docker image内では自動有効になります。container-real suite は独立JUnitとして保存し、外側テスト1件へ証跡を畳み込みません。Docker image内のapt/pip依存はテスト基盤専用であり、`cli_args.py` のruntime依存ではありません。
 

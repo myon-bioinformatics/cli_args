@@ -10,6 +10,10 @@ from cli_args import (Command, add_execution_arguments, add_output_arguments,
 def main(argv=None):
     parser = make_parser(description=__doc__)
     add_execution_arguments(parser)
+    parser.add_argument("--max-output-bytes", type=int, metavar="N",
+                        help="stop child if captured stdout+stderr exceeds N bytes")
+    parser.add_argument("--no-overwrite", action="store_true",
+                        help="refuse existing output file or symlink")
     add_output_arguments(parser)
     tokens = list(sys.argv[1:] if argv is None else argv)
     if "--" not in tokens:
@@ -20,18 +24,25 @@ def main(argv=None):
         command = Command(tuple(tokens[boundary + 1:]))
     except (TypeError, ValueError) as exc:
         parser.error(str(exc))
+    if args.max_output_bytes is not None and args.max_output_bytes < 0:
+        parser.error("--max-output-bytes must be nonnegative")
     try:
-        result = run_command(command, cwd=args.cwd, timeout=args.timeout, dry_run=args.dry_run)
+        result = run_command(command, cwd=args.cwd, timeout=args.timeout,
+                             dry_run=args.dry_run, max_output_bytes=args.max_output_bytes)
     except OSError as exc:
         print(str(exc), file=sys.stderr)
         return 127 if isinstance(exc, FileNotFoundError) else 1
     try:
-        write_output(result, format=args.format, output=args.output)
+        write_output(result, format=args.format, output=args.output,
+                     overwrite=not args.no_overwrite)
     except OSError as exc:
         print("failed to write output: " + str(exc), file=sys.stderr)
         return 1
     if args.format == "text" and result.stderr:
         sys.stderr.write(result.stderr)
+    if result.output_limited:
+        print("command output limit exceeded", file=sys.stderr)
+        return 125
     if result.timed_out:
         print("command timed out", file=sys.stderr)
         return 124

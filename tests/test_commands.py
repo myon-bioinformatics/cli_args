@@ -103,9 +103,10 @@ def test_git_machine_readable_porcelain_refs_and_batch_shapes(tmp_path):
     assert "topic/日本語\0" in refs.stdout
     assert refs.stdout.count("\0") >= 4
 
-    # These two useful Git batch modes need stdin/batch I/O, which run_command
-    # intentionally does not claim yet. Keep their exact argv shape as
-    # construct-only evidence rather than pretending they were executed.
+    # The NUL pathspec now uses real binary stdin, protecting spaces and
+    # leading-hyphen filenames without command-string parsing.
+    tricky = "-NUL 日本語 file.txt"
+    (tmp_path / tricky).write_text("payload", encoding="utf-8")
     pathspec = (
         git.positional("add")
         .option("--pathspec-from-file", "-", attached=True)
@@ -114,8 +115,23 @@ def test_git_machine_readable_porcelain_refs_and_batch_shapes(tmp_path):
     assert pathspec.argv[-3:] == (
         "add", "--pathspec-from-file=-", "--pathspec-file-nul",
     )
+    staged = run_command(pathspec, stdin=tricky.encode("utf-8") + b"\0")
+    assert staged.returncode == 0, staged.stderr
+    index = run_command(git.positional("ls-files", "-z"))
+    assert tricky in index.stdout.split("\0")
     cat_file = git.positional("cat-file").flag("--batch-command").flag("--buffer").flag("-Z")
     assert cat_file.argv[-4:] == ("cat-file", "--batch-command", "--buffer", "-Z")
+
+    # A finite batch-command transaction is now real, including a NUL byte
+    # in the blob body. This is not evidence of a persistent interactive session.
+    payload = b"hello\0world"
+    stored = run_command(git.positional("hash-object", "-w", "--stdin"), stdin=payload)
+    assert stored.returncode == 0, stored.stderr
+    oid = stored.stdout.strip()
+    assert len(oid) in (40, 64)
+    batch = run_command(cat_file, stdin=b"contents " + oid.encode("ascii") + b"\0flush\0")
+    assert batch.returncode == 0, batch.stderr
+    assert batch.stdout == oid + " blob 11\0hello\0world\0"
 
 
 def test_ls_real_separator_space_unicode_and_leading_hyphen(tmp_path):

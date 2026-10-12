@@ -14,6 +14,8 @@ import os
 from pathlib import Path
 import subprocess
 import sys
+import tempfile
+from threading import Event, Lock, Thread
 from typing import Any, Iterable, Mapping, Sequence, TextIO
 
 __all__ = [
@@ -158,29 +160,115 @@ class CommandResult:
     stderr: str
     executed: bool
     timed_out: bool = False
+    output_limited: bool = False
 
 
 def _decode(value: bytes | None) -> str:
     return (value or b"").decode("utf-8", errors="replace")
 
 
+def _run_bounded(command: Command, data: bytes | None, *, cwd: str | os.PathLike[str] | None,
+                 timeout: float | None, env: Mapping[str, str] | None,
+                 limit: int) -> CommandResult:
+    """Read two pipes concurrently with a shared byte cap; stop noisy children."""
+    process = subprocess.Popen(
+        command.argv, cwd=cwd, env=env, stdin=subprocess.PIPE if data is not None else None,
+        stdout=subprocess.PIPE, stderr=subprocess.PIPE, shell=False,
+    )
+    lock = Lock()
+    limited = Event()
+    captured = [bytearray(), bytearray()]
+    remaining = [limit]
+
+    def reader(stream, index):
+        try:
+            while True:
+                # BufferedReader.read(size) may wait for size/EOF even after a
+                # smaller flushed write. read1() returns available pipe bytes
+                # from one underlying read so cap+1 is detected promptly.
+                chunk = stream.read1(min(4096, remaining[0] + 1) if not limited.is_set() else 4096)
+                if not chunk:
+                    break
+                with lock:
+                    if limited.is_set():
+                        continue
+                    size = min(len(chunk), remaining[0])
+                    captured[index].extend(chunk[:size])
+                    remaining[0] -= size
+                    if size < len(chunk):
+                        limited.set()
+                        try:
+                            process.kill()
+                        except ProcessLookupError:
+                            pass
+        finally:
+            stream.close()
+
+    def writer():
+        try:
+            if data is not None and process.stdin is not None:
+                process.stdin.write(data)
+                process.stdin.flush()
+        except (BrokenPipeError, OSError):
+            pass
+        finally:
+            if process.stdin is not None:
+                try:
+                    process.stdin.close()
+                except OSError:
+                    pass
+
+    workers = [Thread(target=reader, args=(process.stdout, 0), daemon=True),
+               Thread(target=reader, args=(process.stderr, 1), daemon=True)]
+    if data is not None:
+        workers.append(Thread(target=writer, daemon=True))
+    for worker in workers:
+        worker.start()
+    timed_out = False
+    try:
+        process.wait(timeout=timeout)
+    except subprocess.TimeoutExpired:
+        timed_out = True
+        process.kill()
+        process.wait()
+    for worker in workers:
+        worker.join()
+    return CommandResult(
+        command.argv, None if timed_out or limited.is_set() else process.returncode,
+        _decode(bytes(captured[0])), _decode(bytes(captured[1])),
+        True, timed_out, limited.is_set(),
+    )
+
+
 def run_command(command: Command, *, cwd: str | os.PathLike[str] | None = None,
                 timeout: float | None = None, dry_run: bool = False,
-                env: Mapping[str, str] | None = None) -> CommandResult:
+                env: Mapping[str, str] | None = None,
+                stdin: str | bytes | None = None,
+                max_output_bytes: int | None = None) -> CommandResult:
     """Capture UTF-8 text (replacement on invalid bytes), never use a shell.
 
     Nonzero exits are results. Launch failures raise OSError. Timeout returns
     partial output and no exit code. env, if provided, replaces the environment.
-    Output is buffered; streaming, binary output and process-tree cleanup are
-    outside this initial contract.
+    Input accepts explicit UTF-8 text or raw bytes (including NUL records).
+    No newline is appended. Output is buffered; streaming, binary output and
+    process-tree cleanup are outside this contract. When max_output_bytes is set,
+    stdout/stderr share a byte cap and the child is stopped on overflow.
     """
     if timeout is not None and (not math.isfinite(timeout) or timeout <= 0):
         raise ValueError("timeout must be positive and finite")
+    if stdin is not None and not isinstance(stdin, (str, bytes)):
+        raise TypeError("stdin must be str, bytes, or None")
+    data = stdin.encode("utf-8") if isinstance(stdin, str) else stdin
+    if max_output_bytes is not None and (type(max_output_bytes) is not int or max_output_bytes < 0):
+        raise ValueError("max_output_bytes must be a nonnegative integer or None")
     if dry_run:
         return CommandResult(command.argv, None, "", "", False)
+    if max_output_bytes is not None:
+        return _run_bounded(command, data, cwd=cwd, timeout=timeout, env=env,
+                            limit=max_output_bytes)
     try:
         result = subprocess.run(command.argv, cwd=cwd, timeout=timeout, env=env,
-                                capture_output=True, shell=False, check=False)
+                                input=data, capture_output=True, shell=False, check=False)
     except subprocess.TimeoutExpired as exc:
         return CommandResult(command.argv, None, _decode(exc.stdout), _decode(exc.stderr),
                              True, True)
@@ -195,6 +283,8 @@ def render_output(value: Any, *, format: str = "text") -> str:
         if format == "text":
             return value.stdout if value.executed else json.dumps(list(value.argv), ensure_ascii=False) + "\n"
         value = asdict(value)
+        if not value["output_limited"]:
+            del value["output_limited"]  # preserve the existing JSON contract
     if format == "json":
         return json.dumps(value, ensure_ascii=False, allow_nan=False, indent=2) + "\n"
     text = str(value)
@@ -203,13 +293,28 @@ def render_output(value: Any, *, format: str = "text") -> str:
 
 def write_output(value: Any, *, format: str = "text",
                  output: str | os.PathLike[str] | None = None,
-                 stream: TextIO | None = None) -> None:
-    """Render before writing; files are UTF-8/LF, overwritten, parents are not created."""
+                 stream: TextIO | None = None,
+                 overwrite: bool = True) -> None:
+    """Render before writing; exclusive hard-link publication for new output."""
     text = render_output(value, format=format)
     if output is None:
         (sys.stdout if stream is None else stream).write(text)
     else:
-        Path(output).write_text(text, encoding="utf-8", newline="\n")
+        if type(overwrite) is not bool:
+            raise TypeError("overwrite must be bool")
+        destination = Path(output)
+        if overwrite:
+            destination.write_text(text, encoding="utf-8", newline="\n")
+        else:
+            # On Windows, x-mode alone may follow a dangling symlink.
+            # Stage complete bytes then publish with an exclusive hard link.
+            # Filesystems without hard links fail closed; never unlink the target.
+            if os.path.lexists(destination):
+                raise FileExistsError("destination already exists: " + str(destination))
+            with tempfile.TemporaryDirectory(prefix=".cli-args-", dir=destination.parent) as work:
+                staged = Path(work) / "complete.txt"
+                staged.write_text(text, encoding="utf-8", newline="\n")
+                os.link(staged, destination)
 
 
 def pytest_command(paths: Sequence[str] = (), *, quiet: bool = False,
