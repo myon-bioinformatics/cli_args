@@ -16,7 +16,14 @@ permissions:
   contents: read
 
 jobs:
+  changes:
+    permissions:
+      contents: read
+    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-change-detection.yml@40bd74c4a36896509b506d6d06251255be6c77c7
+
   vendor-locked:
+    if: needs.changes.outputs.product_changed == 'true'
+    needs: changes
     name: Vendor locked baseline
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -49,6 +56,8 @@ jobs:
           python -S .vendor-sync-tools/vendor_sync.py check --manifest vendor.lock.json
 
   test:
+    if: needs.changes.outputs.product_changed == 'true'
+    needs: changes
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
@@ -71,6 +80,8 @@ jobs:
           retention-days: 14
 
   docker-integration:
+    if: needs.changes.outputs.product_changed == 'true'
+    needs: changes
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -107,6 +118,8 @@ jobs:
           retention-days: 14
 
   portability:
+    if: needs.changes.outputs.product_changed == 'true'
+    needs: changes
     name: core portability (${{ matrix.os }})
     runs-on: ${{ matrix.runner }}
     strategy:
@@ -135,6 +148,8 @@ jobs:
 
 
   negative-evidence:
+    if: needs.changes.outputs.product_changed == 'true'
+    needs: changes
     name: negative evidence / intentional failures
     runs-on: ubuntu-latest
     steps:
@@ -159,8 +174,8 @@ jobs:
           retention-days: 14
 
   negative-failure-identity:
-    needs: negative-evidence
-    if: always()
+    needs: [changes, negative-evidence]
+    if: (always()) && needs.changes.outputs.product_changed == 'true'
     permissions:
       contents: read
       actions: read
@@ -172,8 +187,8 @@ jobs:
       output-artifact: negative-failure-identity
 
   failure-identity:
-    needs: [test, docker-integration, portability]
-    if: always()
+    needs: [changes, test, docker-integration, portability]
+    if: (always()) && needs.changes.outputs.product_changed == 'true'
     permissions:
       contents: read
       actions: read
@@ -184,3 +199,9 @@ jobs:
       artifact-pattern: "junit-*"
       output-artifact: failure-identity
 
+  actionlint:
+    needs: changes
+    if: needs.changes.outputs.workflow_changed == 'true'
+    permissions:
+      contents: read
+    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-actionlint.yml@40bd74c4a36896509b506d6d06251255be6c77c7
