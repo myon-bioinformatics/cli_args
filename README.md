@@ -89,6 +89,19 @@ write_output({"ok": True}, format="json", output="result.json", overwrite=False)
 
 `examples/run_cli.py` は `--max-output-bytes N`、`--no-overwrite` を公開します。出力超過は **exit 125**、タイムアウトは従来どおり **124**、ファイル作成不可は **1** です。入力はCLI側の`--`より前、外部コマンドargvは後ろです。
 
+## 長い出力を読む側に渡す（省略の明示・pytestの決定行）
+
+`trim_output(text, head=40, tail=40)` は先頭 `head` 行と末尾 `tail` 行を残し、間に `... N line(s) omitted ...` の1行を入れます。`head`/`tail` で切った出力は欠けていても完全に見えるため、読む側（人やエージェント）が欠落に気づけるよう省略を明示します。収まる出力はそのまま返します。
+
+`pytest_summary(output)` は pytest の捕捉出力から結果を決める行だけを返します: 最終行 `N failed, M passed in Xs`（`summary`/`counts`）、`-ra` の `FAILED`/`ERROR` 行（`failed`/`errors`）、pytest-cov の `TOTAL` 行と `Required test coverage` の判定（`coverage`）、各失敗の最初の `E` 行や `INTERNALERROR` を含む `deciding_lines`（既定60行、超過は `truncated`）。
+
+```python
+result = run_command(pytest_command(["tests"], quiet=True, summary=True), timeout=600)
+digest = pytest_summary(result.stdout)
+print(digest["summary"], digest["failed"], digest["coverage"]["required_met"])
+print(trim_output(result.stdout, head=20, tail=40))
+```
+
 ## 実行・出力
 
 ```bash

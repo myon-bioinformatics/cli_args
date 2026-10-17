@@ -11,6 +11,7 @@ from dataclasses import asdict, dataclass, field
 import json
 import math
 import os
+import re
 from pathlib import Path
 import subprocess
 import sys
@@ -22,7 +23,7 @@ __all__ = [
     "Argument", "make_parser", "parse_args", "add_output_arguments",
     "add_execution_arguments", "require_when", "positive_seconds",
     "Command", "CommandResult", "run_command", "render_output",
-    "write_output", "pytest_command",
+    "write_output", "pytest_command", "trim_output", "pytest_summary",
 ]
 
 
@@ -327,3 +328,85 @@ def pytest_command(paths: Sequence[str] = (), *, quiet: bool = False,
     return (Command((sys.executable if python is None else python, "-m", "pytest"))
             .flag("-q", quiet).option("--tb", tb).flag("-ra", summary)
             .passthrough(extra).positional(*path_tokens))
+
+
+def trim_output(text: str, *, head: int = 40, tail: int = 40) -> str:
+    """Keep the first ``head`` and last ``tail`` lines with an explicit omission marker.
+
+    A log cut with ``head``/``tail`` silently looks complete; here the gap is a line
+    ``... N line(s) omitted ...`` so a reader (or an agent) knows output is missing.
+    Text that already fits is returned unchanged; a trailing newline is kept.
+    """
+    if not isinstance(text, str):
+        raise TypeError("text must be str")
+    for value in (head, tail):
+        if type(value) is not int or value < 0:
+            raise ValueError("head and tail must be nonnegative integers")
+    lines = text.splitlines(keepends=True)
+    if len(lines) <= head + tail:
+        return text
+    omitted = len(lines) - head - tail
+    kept_tail = lines[len(lines) - tail:] if tail else []
+    gap = f"... {omitted} line(s) omitted ...\n"
+    body = "".join(lines[:head])
+    if body and not body.endswith(("\n", "\r")):
+        body += "\n"
+    return body + gap + "".join(kept_tail)
+
+
+_PYTEST_FINAL = re.compile(
+    r"^=*\s*((?:\d+ (?:failed|passed|skipped|deselected|xfailed|xpassed|warnings?|errors?|rerun)(?:, )?)+"
+    r"|no tests ran)( in [\d.]+s(?: \([^)]*\))?)\s*=*$")
+_PYTEST_DECIDING = re.compile(r"^(?:FAILED|ERROR|XPASS|INTERNALERROR)\b|^E\s+\S|^ERROR collecting\b")
+
+
+def pytest_summary(output: str, *, max_lines: int = 60) -> dict[str, Any]:
+    """The lines that decide a pytest run, from its captured output.
+
+    Returns ``counts`` from the final ``N failed, M passed in Xs`` line (``summary``),
+    ``failed``/``errors`` from the ``-ra`` short summary (``FAILED``/``ERROR`` lines),
+    ``coverage`` (pytest-cov ``TOTAL`` row and the ``Required test coverage`` verdict)
+    and ``deciding_lines``: those lines plus the first ``E`` line of each failure and
+    ``INTERNALERROR``, in order, at most ``max_lines`` (``truncated`` says so).
+    """
+    if not isinstance(output, str):
+        raise TypeError("output must be str")
+    if type(max_lines) is not int or max_lines < 1:
+        raise ValueError("max_lines must be a positive integer")
+    summary, counts, failed, errors, deciding = None, {}, [], [], []
+    coverage: dict[str, Any] = {"total": None, "required": None, "required_met": None}
+    seen_e = False
+    for raw in output.splitlines():
+        line = raw.rstrip()
+        final = _PYTEST_FINAL.match(line.strip())
+        keep = False
+        if final:
+            summary = (final.group(1) + final.group(2)).strip()
+            counts = {}
+            for number, word in re.findall(r"(\d+) (\w+)", final.group(1)):
+                key = {"warning": "warnings", "error": "errors"}.get(word, word)
+                counts[key] = counts.get(key, 0) + int(number)
+            keep = True
+        elif line.startswith("TOTAL") and re.search(r"\d+%$", line):
+            coverage["total"] = " ".join(line.split())
+            keep = True
+        elif "Required test coverage of" in line:
+            coverage["required"] = re.sub(r"^FAIL\s+", "", line.strip())
+            coverage["required_met"] = "reached" in line and "not reached" not in line
+            keep = True
+        elif _PYTEST_DECIDING.match(line):
+            if line.startswith("FAILED"):
+                failed.append(line[7:].strip())
+            elif line.startswith("ERROR ") and not line.startswith("ERROR collecting"):
+                errors.append(line[6:].strip())
+            if line.startswith("E "):
+                keep = not seen_e
+                seen_e = True
+            else:
+                keep = True
+        elif line.startswith("___") and line.endswith("___"):
+            seen_e = False  # next failure section: keep its first E line
+        if keep:
+            deciding.append(line)
+    return {"summary": summary, "counts": counts, "failed": failed, "errors": errors, "coverage": coverage,
+            "deciding_lines": deciding[:max_lines], "truncated": len(deciding) > max_lines}
