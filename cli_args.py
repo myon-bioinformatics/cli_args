@@ -6,6 +6,7 @@ External tools keep their own option semantics; pass their argv unchanged.
 from __future__ import annotations
 
 import argparse
+from difflib import get_close_matches
 from collections.abc import Sequence as SequenceABC
 from dataclasses import asdict, dataclass, field
 import json
@@ -42,10 +43,33 @@ class Argument:
         object.__setattr__(self, "names", names)
 
 
-def make_parser(arguments: Iterable[Argument] = (), **kwargs: Any) -> argparse.ArgumentParser:
-    """Create a parser; option abbreviation is disabled unless requested."""
+class _SuggestingArgumentParser(argparse.ArgumentParser):
+    """Offer a closest *option* on unknown-argument errors, without accepting it."""
+
+    def error(self, message: str) -> None:
+        if message.startswith("unrecognized arguments: "):
+            # argparse's error string is for display, not a shell-escaped argv.
+            # Only extract long option names; never try to guess positional values.
+            unknown = message[len("unrecognized arguments: "):]
+            tokens = re.findall(r"(?:^|\\s)(--[A-Za-z0-9][A-Za-z0-9_-]*)(?=\\s|=|$)", unknown)
+            options = [option for action in self._actions if action.help is not argparse.SUPPRESS
+                       for option in action.option_strings if option.startswith("--")]
+            for token in tokens:
+                suggestions = get_close_matches(token, options, n=1, cutoff=0.7)
+                if suggestions:
+                    message += f" (did you mean {suggestions[0]!r}?)"
+                    break
+        super().error(message)
+
+
+def make_parser(arguments: Iterable[Argument] = (), *, suggest_unknown: bool = False,
+                **kwargs: Any) -> argparse.ArgumentParser:
+    """Create a parser; optional unknown-option hints never change parsing."""
+    if type(suggest_unknown) is not bool:
+        raise TypeError("suggest_unknown must be bool")
     kwargs.setdefault("allow_abbrev", False)
-    parser = argparse.ArgumentParser(**kwargs)
+    parser_class = _SuggestingArgumentParser if suggest_unknown else argparse.ArgumentParser
+    parser = parser_class(**kwargs)
     for argument in arguments:
         parser.add_argument(*argument.names, **argument.kwargs)
     return parser
