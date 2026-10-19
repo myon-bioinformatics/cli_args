@@ -198,7 +198,7 @@ Host Python matrixは速いcore contractに限定し、Docker/systemd stateへ�
 
 Git/curl/ls等がhost環境に無い場合、host-real testcaseは理由付きskipになります。ただしDocker integration laneでは必要binaryをimageに明示的に入れるため、そのlaneではskipを許容しません。外部web siteやlive認証は不要です。
 
-Ubuntu CIではPython 3.10 / 3.12 / 3.14のJUnitに加えてDocker integration JUnitを別artifactとして保存します。さらにWindows/macOSではPython 3.12でstdlib/core contract (`tests/test_cli_args.py`) を実行し、OS固有のsubprocess/path/newline差を軽量に検証します。host Python 3件、Docker transport/Compose 1件、container-real CLI 1件、Windows/macOS core 2件の**全7 report**をshared exact-report collectorへ渡します。**argvを構築できること、stubへ渡せること、real CLIが動いたこと、live/service integrationまで測ったことは別契約です。** Windows/macOSのcore Python contractは実測します。live認証付きgh、real Playwright browser/parser、Flutter/Dart bootstrap/build、xprobe、systemd-backed journal serviceはこの初期版では未検証です。
+Ubuntu CIではPython 3.11 / 3.12 / 3.14のJUnitに加えてDocker integration JUnitを別artifactとして保存します。さらにWindows/macOSではPython 3.12でstdlib/core contract (`tests/test_cli_args.py`) を実行し、OS固有のsubprocess/path/newline差を軽量に検証します。host Python 3件、Docker transport/Compose 1件、container-real CLI 1件、Windows/macOS core 2件の**全7 report**をshared exact-report collectorへ渡します。**argvを構築できること、stubへ渡せること、real CLIが動いたこと、live/service integrationまで測ったことは別契約です。** Windows/macOSのcore Python contractは実測します。live認証付きgh、real Playwright browser/parser、Flutter/Dart bootstrap/build、xprobe、systemd-backed journal serviceはこの初期版では未検証です。
 
 ```bash
 python -m pip install -r tests/requirements.txt
@@ -209,3 +209,22 @@ python -m pytest -q -ra --tb=short --junitxml=test-results/pytest-local.xml
 `tests/requirements.txt` が canonical なテスト依存manifestです。root `requirements.txt` は既存のローカル導線を壊さないための test-only compatibility shim で、runtime依存を意味しません。本体が `python -S` で動くことと、外部ツールが存在することは別の条件です。pytestは通常の `python -m pytest` で実行します。
 
 速度ベンチマークではなく「どの利用パターンを再現して検証したか」を記録します。失敗事例は回帰テストへ追加し、実例から共通機能を増やします。HTMLの取得・構造抽出は別のツールへ置き、このファイルの引数・実行・出力機能を利用する想定です。
+
+## Runtime and development Python policy
+
+The standard-library runtime supports Python 3.10+; this change preserves the
+existing runtime floor. The separate `runtime-compatibility` CI lane executes
+behavior tests with `python -S`, without installing pytest or any third-party
+package. Development/test environments use Python 3.11+ and a committed uv lock:
+
+```sh
+uv sync --locked --python 3.11
+uv run --locked python -m pytest
+python -S -m unittest discover -s tests -p test_runtime_compatibility.py -v
+```
+
+`pyproject.toml` is the canonical development dependency definition; legacy
+requirements files remain for downstream callers. Runtime metadata does not
+raise the source/vendoring floor to the development floor. CI pins setup-python
+v7.0.0 and setup-uv v10.3.0 by full commit SHA, and uses uv 0.13.1. Setup actions
+using Node 24 require runner 2.327.1 or newer (GitHub-hosted runners are used).
