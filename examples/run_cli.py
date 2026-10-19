@@ -18,7 +18,7 @@ def main(argv=None):
     stdin_group.add_argument("--stdin", help="string input to pass as stdin to the process")
     stdin_group.add_argument("--stdin-file", type=Path, help="path to file whose contents are passed as stdin")
     parser.add_argument("--env", action="append", metavar="KEY=VALUE",
-                        help="environment variable setting for the process (can be repeated)")
+                        help="environment variable setting for the process (can be repeated; values may be visible in process listings)")
     add_output_arguments(parser)
     tokens = list(sys.argv[1:] if argv is None else argv)
     if "--" not in tokens:

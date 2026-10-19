@@ -420,7 +420,7 @@ def build_env(extra: Mapping[str, str] | Sequence[str] | None = None, *,
     If inherit is True (default), starts with base (default: os.environ).
     extra can be a Mapping or an ordered sequence of "KEY=VALUE" strings.
     Rejects scalar or unordered iterables, non-string keys/values, NUL bytes,
-    and malformed "KEY=VALUE" entries.
+    empty keys, keys containing "=", and malformed "KEY=VALUE" entries.
     """
     if type(inherit) is not bool:
         raise TypeError("inherit must be bool")
@@ -431,16 +431,26 @@ def build_env(extra: Mapping[str, str] | Sequence[str] | None = None, *,
             raise TypeError("base must be a Mapping or None")
         base_map = dict(base) if inherit else {}
 
+    def validate_entry(key, value):
+        if not isinstance(key, str) or not isinstance(value, str):
+            raise TypeError("environment keys and values must be strings")
+        if "\0" in key or "\0" in value:
+            raise ValueError("environment keys and values must not contain NUL")
+        if not key or "=" in key:
+            raise ValueError("environment keys must be nonempty and must not contain '='")
+
+    # Validate caller-supplied base entries too, including the extra=None path.
+    # The process's inherited environment is already valid for its platform.
+    if base is not None:
+        for key, value in base_map.items():
+            validate_entry(key, value)
     result = dict(base_map)
     if extra is None:
         return result
 
     if isinstance(extra, Mapping):
         for k, v in extra.items():
-            if not isinstance(k, str) or not isinstance(v, str):
-                raise TypeError("environment keys and values must be strings")
-            if "\0" in k or "\0" in v:
-                raise ValueError("environment keys and values must not contain NUL")
+            validate_entry(k, v)
             result[k] = v
         return result
 

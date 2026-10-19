@@ -534,3 +534,21 @@ def test_example_stdin_and_env_options(tmp_path):
         "--env", "INVALID_NO_EQUALS", "--",
         sys.executable, "-S", "-c", "print('bad')"))
     assert bad_env_res.returncode == 2
+
+
+@pytest.mark.parametrize("invalid", [
+    {"BAD=KEY": "value"}, {"": "value"}, {"BAD\0KEY": "value"},
+    {"KEY": "bad\0value"}, {1: "value"}, {"KEY": 1},
+])
+def test_build_env_validates_extra_and_inherited_base(invalid):
+    error = TypeError if any(not isinstance(k, str) or not isinstance(v, str)
+                             for k, v in invalid.items()) else ValueError
+    with pytest.raises(error):
+        build_env(invalid, inherit=False)
+    with pytest.raises(error):
+        build_env(base=invalid)
+    assert build_env(base=invalid, inherit=False) == {}
+
+
+def test_build_env_accepts_empty_and_equals_in_values():
+    assert build_env({"EMPTY": "", "VALUE": "x=y"}, inherit=False) == {"EMPTY": "", "VALUE": "x=y"}
