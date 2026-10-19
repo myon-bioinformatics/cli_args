@@ -96,6 +96,44 @@ display = join(["git", "status", "--short"])
 
 Conversely, `shlex.split` is for deliberately parsing shell-like text. Do not use it to split an argv token that is already structured.
 
+## Implementation use: typo-aware one-liner options (opt-in)
+
+The same `difflib` that can display a test diff can also improve a **runtime CLI**.
+`cli_args.make_parser(suggest_unknown=True)` uses `get_close_matches` for
+mistyped long options, without changing the parser's semantics or accepting an
+approximate match. By default, `suggest_unknown=False` preserves argparse's
+original diagnostics.
+
+```python
+from cli_args import make_parser
+
+parser = make_parser(suggest_unknown=True)
+parser.add_argument("--max-output-bytes", type=int)
+parser.parse_args(["--max-outpt-bytes=12"])
+# exit 2: unrecognized arguments: --max-outpt-bytes=12
+#          (did you mean '--max-output-bytes'?)
+```
+
+`python -S examples/run_cli.py` enables this hint for its wrapper options.
+Only *unknown long options* in argparse error messages are candidates;
+positional data, hidden options and child-command argv after the mandatory
+`--` boundary are not guessed or rewritten. The option-name extraction is
+intentionally conservative, not a shell-command parser. `parse_known_args`
+retains its ordinary behavior. Python 3.10+ and `python -S` are supported.
+Tests exercise both the opt-in parser and a real Python subprocess one-liner.
+
+Try it:
+
+```bash
+python -S examples/run_cli.py --max-outpt-bytes=12 -- python -c 'print("hello")'
+python -S examples/run_cli.py --max-output-bytes=12 -- python -c 'print("hello")'
+```
+
+Use `difflib` for convenience or edit alignment, not as an authority for
+syntax, identity, security decisions, or machine-contract equivalence. In
+tests, continue using pytest for assertions; a stdlib algorithm can belong
+in production code while pytest checks its behavioral boundaries.
+
 ## Representative measured behavior in PR #1
 
 `tests/test_stdlib_functions.py` keeps representative behaviors executable on the supported Python floor:
