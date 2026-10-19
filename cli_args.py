@@ -24,6 +24,7 @@ __all__ = [
     "add_execution_arguments", "require_when", "positive_seconds",
     "Command", "CommandResult", "run_command", "render_output",
     "write_output", "pytest_command", "trim_output", "pytest_summary",
+    "build_env",
 ]
 
 
@@ -410,3 +411,53 @@ def pytest_summary(output: str, *, max_lines: int = 60) -> dict[str, Any]:
             deciding.append(line)
     return {"summary": summary, "counts": counts, "failed": failed, "errors": errors, "coverage": coverage,
             "deciding_lines": deciding[:max_lines], "truncated": len(deciding) > max_lines}
+
+
+def build_env(extra: Mapping[str, str] | Sequence[str] | None = None, *,
+              inherit: bool = True, base: Mapping[str, str] | None = None) -> dict[str, str]:
+    """Construct an environment dictionary for run_command.
+
+    If inherit is True (default), starts with base (default: os.environ).
+    extra can be a Mapping or an ordered sequence of "KEY=VALUE" strings.
+    Rejects scalar or unordered iterables, non-string keys/values, NUL bytes,
+    and malformed "KEY=VALUE" entries.
+    """
+    if type(inherit) is not bool:
+        raise TypeError("inherit must be bool")
+    if base is None:
+        base_map = dict(os.environ) if inherit else {}
+    else:
+        if not isinstance(base, Mapping):
+            raise TypeError("base must be a Mapping or None")
+        base_map = dict(base) if inherit else {}
+
+    result = dict(base_map)
+    if extra is None:
+        return result
+
+    if isinstance(extra, Mapping):
+        for k, v in extra.items():
+            if not isinstance(k, str) or not isinstance(v, str):
+                raise TypeError("environment keys and values must be strings")
+            if "\0" in k or "\0" in v:
+                raise ValueError("environment keys and values must not contain NUL")
+            result[k] = v
+        return result
+
+    if (isinstance(extra, (str, bytes, bytearray, os.PathLike))
+            or not isinstance(extra, SequenceABC)):
+        raise TypeError("extra environment entries must be a Mapping or ordered sequence of KEY=VALUE strings")
+
+    for item in extra:
+        if not isinstance(item, str):
+            raise TypeError("environment entries must be strings in KEY=VALUE format")
+        if "\0" in item:
+            raise ValueError("environment entries must not contain NUL")
+        if "=" not in item:
+            raise ValueError(f"invalid environment entry '{item}': missing '='")
+        key, value = item.split("=", 1)
+        if not key:
+            raise ValueError(f"invalid environment entry '{item}': empty key")
+        result[key] = value
+
+    return result

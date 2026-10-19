@@ -87,7 +87,7 @@ if result.output_limited:
 write_output({"ok": True}, format="json", output="result.json", overwrite=False)
 ```
 
-`examples/run_cli.py` は `--max-output-bytes N`、`--no-overwrite` を公開します。出力超過は **exit 125**、タイムアウトは従来どおり **124**、ファイル作成不可は **1** です。入力はCLI側の`--`より前、外部コマンドargvは後ろです。
+`examples/run_cli.py` は `--max-output-bytes N`、`--no-overwrite`、`--stdin TEXT` / `--stdin-file PATH`（排他）、`--env KEY=VALUE`（複数指定可）を公開します。出力超過は **exit 125**、タイムアウトは従来どおり **124**、ファイル作成不可やstdinファイル読み込み不可は **1** です。入力はCLI側の`--`より前、外部コマンドargvは後ろです。
 
 ## 長い出力を読む側に渡す（省略の明示・pytestの決定行）
 
@@ -118,7 +118,7 @@ python -S examples/run_cli.py --format json --output result.json --timeout 30 --
 - textの実行結果はstdoutそのままです。`run_command()` が捕捉したstdout/stderrはUTF-8 decodeのみ行い、子プロセスが出した改行 (`\n` / `\r\n`) は正規化しません。ライブラリ利用者はstderrと終了状態を確認してください。例のCLIはstderrも表示し、非ゼロ終了を伝え、タイムアウト124・実行ファイル不在127で終了します。`--output` の書込みに失敗した場合（親ディレクトリ不存在・権限不足等）は traceback を出さず `failed to write output: ...` をstderrへ出して終了1にします。
 - 保存はUTF-8・LF (`\n`) 固定・既存ファイル上書きです。Windowsを含め改行バイトをLFに固定します。親ディレクトリは作成しません。JSON変換に成功してから書き込みますが、原子的な保存ではありません。
 - 既定の非制限実行は出力をメモリに保持します。大量出力は `max_output_bytes` の明示指定で制限できます。バイナリのlossless出力、対話的stdin、ストリーミング、子孫プロセス全体の停止は対象外です。
-- `env` 指定は環境全体の置換です。継承する場合は呼び出し側で `os.environ` と合成してください。
+- `env` 指定は環境全体の置換です。継承する場合は呼び出し側で `os.environ` と合成するか、`build_env(extra, inherit=True)` ヘルパーを利用してください。`build_env()` は Mapping または `"KEY=VALUE"` 文字列の sequence を受け取り、環境変数を安全に合成します。
 
 ## 標準ライブラリを第3のCLI面として使う
 
