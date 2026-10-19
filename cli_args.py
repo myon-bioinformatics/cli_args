@@ -24,6 +24,7 @@ __all__ = [
     "add_execution_arguments", "require_when", "positive_seconds",
     "Command", "CommandResult", "run_command", "render_output",
     "write_output", "pytest_command", "trim_output", "pytest_summary",
+    "build_env",
 ]
 
 
@@ -410,3 +411,63 @@ def pytest_summary(output: str, *, max_lines: int = 60) -> dict[str, Any]:
             deciding.append(line)
     return {"summary": summary, "counts": counts, "failed": failed, "errors": errors, "coverage": coverage,
             "deciding_lines": deciding[:max_lines], "truncated": len(deciding) > max_lines}
+
+
+def build_env(extra: Mapping[str, str] | Sequence[str] | None = None, *,
+              inherit: bool = True, base: Mapping[str, str] | None = None) -> dict[str, str]:
+    """Construct an environment dictionary for run_command.
+
+    If inherit is True (default), starts with base (default: os.environ).
+    extra can be a Mapping or an ordered sequence of "KEY=VALUE" strings.
+    Rejects scalar or unordered iterables, non-string keys/values, NUL bytes,
+    empty keys, keys containing "=", and malformed "KEY=VALUE" entries.
+    """
+    if type(inherit) is not bool:
+        raise TypeError("inherit must be bool")
+    if base is None:
+        base_map = dict(os.environ) if inherit else {}
+    else:
+        if not isinstance(base, Mapping):
+            raise TypeError("base must be a Mapping or None")
+        base_map = dict(base) if inherit else {}
+
+    def validate_entry(key, value):
+        if not isinstance(key, str) or not isinstance(value, str):
+            raise TypeError("environment keys and values must be strings")
+        if "\0" in key or "\0" in value:
+            raise ValueError("environment keys and values must not contain NUL")
+        if not key or "=" in key:
+            raise ValueError("environment keys must be nonempty and must not contain '='")
+
+    # Validate caller-supplied base entries too, including the extra=None path.
+    # The process's inherited environment is already valid for its platform.
+    if base is not None:
+        for key, value in base_map.items():
+            validate_entry(key, value)
+    result = dict(base_map)
+    if extra is None:
+        return result
+
+    if isinstance(extra, Mapping):
+        for k, v in extra.items():
+            validate_entry(k, v)
+            result[k] = v
+        return result
+
+    if (isinstance(extra, (str, bytes, bytearray, os.PathLike))
+            or not isinstance(extra, SequenceABC)):
+        raise TypeError("extra environment entries must be a Mapping or ordered sequence of KEY=VALUE strings")
+
+    for item in extra:
+        if not isinstance(item, str):
+            raise TypeError("environment entries must be strings in KEY=VALUE format")
+        if "\0" in item:
+            raise ValueError("environment entries must not contain NUL")
+        if "=" not in item:
+            raise ValueError(f"invalid environment entry '{item}': missing '='")
+        key, value = item.split("=", 1)
+        if not key:
+            raise ValueError(f"invalid environment entry '{item}': empty key")
+        result[key] = value
+
+    return result

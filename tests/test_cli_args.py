@@ -8,7 +8,7 @@ import sys
 import pytest
 
 from cli_args import (Argument, Command, CommandResult, add_execution_arguments,
-                      add_output_arguments, make_parser, parse_args, pytest_command,
+                      add_output_arguments, build_env, make_parser, parse_args, pytest_command,
                       render_output, require_when, run_command, write_output)
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -443,3 +443,112 @@ def test_bounded_small_flushed_stderr_overflow():
     assert result.output_limited and not result.timed_out
     assert result.returncode is None
     assert result.stderr == "e" * 50
+
+
+def test_build_env_mapping_and_sequence():
+    base = {"A": "1", "B": "2"}
+    assert build_env(base=base, inherit=True) == base
+    assert build_env(base=base, inherit=False) == {}
+    assert build_env({"B": "3", "C": "4"}, base=base, inherit=True) == {"A": "1", "B": "3", "C": "4"}
+    assert build_env({"B": "3", "C": "4"}, base=base, inherit=False) == {"B": "3", "C": "4"}
+    seq_result = build_env(["B=3", "C=4", "D=x=y"], base=base, inherit=True)
+    assert seq_result == {"A": "1", "B": "3", "C": "4", "D": "x=y"}
+
+
+def test_build_env_rejections():
+    with pytest.raises(TypeError, match="inherit"):
+        build_env(inherit="true")
+    with pytest.raises(TypeError, match="base"):
+        build_env(base="not_a_map")
+    with pytest.raises(TypeError, match="keys and values"):
+        build_env({1: "a"})
+    with pytest.raises(TypeError, match="keys and values"):
+        build_env({"a": 1})
+    with pytest.raises(ValueError, match="NUL"):
+        build_env({"a\0b": "c"})
+    with pytest.raises(ValueError, match="NUL"):
+        build_env({"a": "c\0d"})
+    with pytest.raises(TypeError, match="ordered sequence"):
+        build_env("A=1")
+    with pytest.raises(TypeError, match="ordered sequence"):
+        build_env(b"A=1")
+    with pytest.raises(TypeError, match="ordered sequence"):
+        build_env(Path("A=1"))
+    with pytest.raises(TypeError, match="ordered sequence"):
+        build_env({"A=1", "B=2"})
+    with pytest.raises(TypeError, match="ordered sequence"):
+        build_env((x for x in ["A=1"]))
+    with pytest.raises(TypeError, match="entries must be strings"):
+        build_env([123])
+    with pytest.raises(ValueError, match="NUL"):
+        build_env(["A=1\0" + "2"])
+    with pytest.raises(ValueError, match="missing '='"):
+        build_env(["NOEQUALS"])
+    with pytest.raises(ValueError, match="empty key"):
+        build_env(["=VALUE"])
+
+
+def test_example_stdin_and_env_options(tmp_path):
+    runner = Command((sys.executable, "-S", str(ROOT / "examples/run_cli.py")))
+
+    # --stdin option
+    stdin_res = run_command(runner.positional(
+        "--stdin", "hello from stdin", "--",
+        sys.executable, "-S", "-c", "import sys; sys.stdout.write(sys.stdin.read().upper())"))
+    assert stdin_res.returncode == 0
+    assert stdin_res.stdout == "HELLO FROM STDIN"
+
+    # --stdin-file option
+    stdin_file = tmp_path / "payload.bin"
+    stdin_file.write_bytes(b"binary\0payload")
+    file_res = run_command(runner.positional(
+        "--stdin-file", stdin_file, "--",
+        sys.executable, "-S", "-c", "import sys; sys.stdout.buffer.write(sys.stdin.buffer.read())"))
+    assert file_res.returncode == 0
+    assert file_res.stdout == "binary\0payload"
+
+    # Mutually exclusive --stdin and --stdin-file
+    excl_res = run_command(runner.positional(
+        "--stdin", "text", "--stdin-file", stdin_file, "--",
+        sys.executable, "-S", "-c", "print('bad')"))
+    assert excl_res.returncode == 2
+
+    # Missing stdin-file error
+    missing_file = tmp_path / "nonexistent.txt"
+    missing_res = run_command(runner.positional(
+        "--stdin-file", missing_file, "--",
+        sys.executable, "-S", "-c", "print('bad')"))
+    assert missing_res.returncode == 1
+    assert "failed to read stdin file:" in missing_res.stderr
+
+    # --env option
+    env_res = run_command(runner.positional(
+        "--env", "TEST_VAR_A=alpha", "--env", "TEST_VAR_B=beta=gamma", "--",
+        sys.executable, "-S", "-c",
+        "import os; print(os.environ.get('TEST_VAR_A'), os.environ.get('TEST_VAR_B'))"))
+    assert env_res.returncode == 0
+    assert env_res.stdout.strip() == "alpha beta=gamma"
+
+    # Malformed --env option
+    bad_env_res = run_command(runner.positional(
+        "--env", "INVALID_NO_EQUALS", "--",
+        sys.executable, "-S", "-c", "print('bad')"))
+    assert bad_env_res.returncode == 2
+
+
+@pytest.mark.parametrize("invalid", [
+    {"BAD=KEY": "value"}, {"": "value"}, {"BAD\0KEY": "value"},
+    {"KEY": "bad\0value"}, {1: "value"}, {"KEY": 1},
+])
+def test_build_env_validates_extra_and_inherited_base(invalid):
+    error = TypeError if any(not isinstance(k, str) or not isinstance(v, str)
+                             for k, v in invalid.items()) else ValueError
+    with pytest.raises(error):
+        build_env(invalid, inherit=False)
+    with pytest.raises(error):
+        build_env(base=invalid)
+    assert build_env(base=invalid, inherit=False) == {}
+
+
+def test_build_env_accepts_empty_and_equals_in_values():
+    assert build_env({"EMPTY": "", "VALUE": "x=y"}, inherit=False) == {"EMPTY": "", "VALUE": "x=y"}
