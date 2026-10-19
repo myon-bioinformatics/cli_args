@@ -8,7 +8,7 @@ from cli_args import (Command, add_execution_arguments, add_output_arguments,
 
 
 def main(argv=None):
-    parser = make_parser(description=__doc__)
+    parser = make_parser(description=__doc__, suggest_unknown=True)
     add_execution_arguments(parser)
     parser.add_argument("--max-output-bytes", type=int, metavar="N",
                         help="stop child if captured stdout+stderr exceeds N bytes")
