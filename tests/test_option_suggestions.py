@@ -208,17 +208,21 @@ def test_missing_boundary_never_executes_child_under_python_S(tmp_path):
     assert not sentinel.exists()
 
 
-def test_child_argv_is_not_suggested_rewritten_or_parsed_under_python_S():
+def test_child_argv_is_not_suggested_rewritten_or_parsed_under_python_S(tmp_path):
+    report = tmp_path / 'result.json'
+    # File output is UTF-8 on every OS; piped Windows stdout uses its locale.
     child_args = ['--max-outpt-bytes=5', '--dry-ru', 'text --outpt',
                   '--', '--format', 'invalid', '日本 語', '']
     run = subprocess.run(
-        [sys.executable, '-S', 'examples/run_cli.py', '--format=json', '--',
+        [sys.executable, '-S', 'examples/run_cli.py', '--format=json',
+         '--output', str(report), '--',
          sys.executable, '-S', '-c',
          'import json,sys;print(json.dumps(sys.argv[1:]))', *child_args],
         cwd=ROOT, capture_output=True, text=True, timeout=15,
     )
     assert run.returncode == 0, run.stderr
-    result = json.loads(run.stdout)
+    assert run.stdout == ''
+    result = json.loads(report.read_text(encoding='utf-8'))
     assert json.loads(result['stdout']) == child_args
     assert result['argv'][-len(child_args):] == child_args
     assert run.stderr == ''
