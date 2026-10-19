@@ -52,12 +52,16 @@ class _SuggestingArgumentParser(argparse.ArgumentParser):
             # Only extract long option names; never try to guess positional values.
             unknown = message[len("unrecognized arguments: "):]
             tokens = re.findall(r"(?:^|\s)(--[A-Za-z0-9][A-Za-z0-9_-]*)(?=\s|=|$)", unknown)
-            options = [option for action in self._actions if action.help is not argparse.SUPPRESS
-                       for option in action.option_strings if option.startswith("--")]
+            options = [(option, action.help == argparse.SUPPRESS)
+                       for action in self._actions for option in action.option_strings
+                       if option.startswith("--")]
             for token in tokens:
-                suggestions = get_close_matches(token, options, n=1, cutoff=0.7)
+                # Rank across all options so a typo of a hidden option cannot
+                # accidentally suggest a weaker public match.
+                suggestions = get_close_matches(token, [name for name, _ in options], n=1, cutoff=0.7)
                 if suggestions:
-                    message += f" (did you mean {suggestions[0]!r}?)"
+                    if not any(name == suggestions[0] and hidden for name, hidden in options):
+                        message += f" (did you mean {suggestions[0]!r}?)"
                     break
         super().error(message)
 
