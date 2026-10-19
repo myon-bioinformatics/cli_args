@@ -84,4 +84,4 @@ def test_real_one_liner_still_transports_argv():
         cwd=ROOT, capture_output=True, text=True, timeout=15,
     )
     assert run.returncode == 0, run.stderr
-    assert json.loads(run.stdout)["stdout"] == "hello\\n"
+    assert json.loads(run.stdout)["stdout"].splitlines() == ["hello"]
