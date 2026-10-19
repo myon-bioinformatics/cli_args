@@ -51,7 +51,7 @@ class _SuggestingArgumentParser(argparse.ArgumentParser):
             # argparse's error string is for display, not a shell-escaped argv.
             # Only extract long option names; never try to guess positional values.
             unknown = message[len("unrecognized arguments: "):]
-            tokens = re.findall(r"(?:^|\\s)(--[A-Za-z0-9][A-Za-z0-9_-]*)(?=\\s|=|$)", unknown)
+            tokens = re.findall(r"(?:^|\s)(--[A-Za-z0-9][A-Za-z0-9_-]*)(?=\s|=|$)", unknown)
             options = [option for action in self._actions if action.help is not argparse.SUPPRESS
                        for option in action.option_strings if option.startswith("--")]
             for token in tokens:
