@@ -115,10 +115,11 @@ parser.parse_args(["--max-outpt-bytes=12"])
 ```
 
 `python -S examples/run_cli.py` enables this hint for its wrapper options.
-Only *unknown long options* in argparse error messages are candidates;
+Only whole *unknown long-option tokens* before the first `--` are candidates;
 positional data, hidden options and child-command argv after the mandatory
-`--` boundary are not guessed or rewritten. The option-name extraction is
-intentionally conservative, not a shell-command parser. `parse_known_args`
+`--` boundary are not guessed or rewritten. Hints use structured argv and the
+actual unrecognized tokens, never reparse diagnostic text. The ASCII option-name filter is intentionally conservative.
+Options expanded from argument files are not guessed. `parse_known_args`
 retains its ordinary behavior. Python 3.10+ and `python -S` are supported.
 Tests exercise both the opt-in parser and a real Python subprocess one-liner.
 

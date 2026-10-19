@@ -46,24 +46,42 @@ class Argument:
 class _SuggestingArgumentParser(argparse.ArgumentParser):
     """Offer a closest *option* on unknown-argument errors, without accepting it."""
 
-    def error(self, message: str) -> None:
-        if message.startswith("unrecognized arguments: "):
-            # argparse's error string is for display, not a shell-escaped argv.
-            # Only extract long option names; never try to guess positional values.
-            unknown = message[len("unrecognized arguments: "):]
-            tokens = re.findall(r"(?:^|\s)(--[A-Za-z0-9][A-Za-z0-9_-]*)(?=\s|=|$)", unknown)
-            options = [(option, action.help == argparse.SUPPRESS)
-                       for action in self._actions for option in action.option_strings
-                       if option.startswith("--")]
-            for token in tokens:
-                # Rank across all options so a typo of a hidden option cannot
-                # accidentally suggest a weaker public match.
-                suggestions = get_close_matches(token, [name for name, _ in options], n=1, cutoff=0.7)
-                if suggestions:
-                    if not any(name == suggestions[0] and hidden for name, hidden in options):
-                        message += f" (did you mean {suggestions[0]!r}?)"
-                    break
-        super().error(message)
+    def parse_args(self, args=None, namespace=None):
+        # Keep structured argv: error text loses token and -- boundaries.
+        tokens = list(sys.argv[1:] if args is None else args)
+        parsed, extras = self.parse_known_args(tokens, namespace)
+        if extras:
+            message = argparse._("unrecognized arguments: %s") % " ".join(extras)
+            message += self._unknown_option_hint(tokens, extras)
+            # argparse honors exit_on_error here starting with 3.12.5.
+            # Earlier releases always call error(), even when it is false.
+            if sys.version_info >= (3, 12, 5) and not self.exit_on_error:
+                raise argparse.ArgumentError(None, message)
+            self.error(message)
+        return parsed
+
+    def _unknown_option_hint(self, tokens, extras):
+        boundary = tokens.index("--") if "--" in tokens else len(tokens)
+        wrapper_tokens = tokens[:boundary]
+        options = {option: action.help == argparse.SUPPRESS
+                   for action in self._actions for option in action.option_strings
+                   if option.startswith("--")}
+        for token in extras:
+            if token == "--":
+                break
+            if token not in wrapper_tokens:
+                continue
+            name = token.partition("=")[0]
+            if ("-" not in self.prefix_chars or name in options
+                    or re.fullmatch(r"--[A-Za-z0-9][A-Za-z0-9_-]*", name) is None):
+                continue
+            # Rank hidden options too, so their typos do not fall back to a
+            # weaker public match. Never display the hidden winner.
+            suggestions = get_close_matches(name, list(options), n=1, cutoff=0.7)
+            if suggestions:
+                candidate = suggestions[0]
+                return "" if options[candidate] else f" (did you mean {candidate!r}?)"
+        return ""
 
 
 def make_parser(arguments: Iterable[Argument] = (), *, suggest_unknown: bool = False,
