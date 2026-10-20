@@ -1,0 +1,3 @@
+
+# Preserve locked vendor bytes on every operating system.
+vendor/* -text

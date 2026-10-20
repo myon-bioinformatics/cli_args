@@ -7,8 +7,10 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /workspace
-COPY cli_args.py pytest.ini ./
+COPY cli_args.py pytest.ini pyproject.toml uv.lock ./
 COPY tests ./tests
-RUN python -m pip install --no-cache-dir -r tests/requirements.txt
+RUN python -m pip install --no-cache-dir uv==0.13.3 \
+    && uv sync --locked --python "$(command -v python)"
+ENV PATH="/workspace/.venv/bin:$PATH"
 
 CMD ["python", "-m", "pytest", "-q", "tests/test_container_commands.py"]
