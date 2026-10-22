@@ -194,7 +194,7 @@ PR #1（マージ済み）では、探索中の失敗を単なるノイズとし
 
 AI coding向けには、人間向け表示をparseするよりも **machine-readable / NUL-safe / fail-fast / structured-field** な既存CLI契約を優先します。Git porcelain v2・`-z`/`%00`、curlの診断系、gh API paginationのような「地味だが壊れにくい」引数は積極的に回帰証拠へ取り込みます。一方、双方向の対話的batch protocolは未実装であり、有限のstdin入力が通ることを常駐処理の動作保証に拡張しません。
 
-Host Python matrixは速いcore contractに限定し、Docker/systemd stateへ依存しません。Docker integration laneは `tests/docker/Dockerfile` の test-only image (`python:3.14.0-slim-bookworm`) をbuildし、host側のDocker transport/Compose検証とは別に、その中で同じ `cli_args.py` と pytest harnessを使ってGit/curl/ls/journalctl/FFmpegを検証します。`CLI_ARGS_CONTAINER_REAL=1` は test image 自体に埋め込まれ、CIや利用者が手動で切り替える必要はありません。Host matrixではそのmarkerが存在しないためcontainer-real suiteは自動skipし、Docker image内では自動有効になります。container-real suite は独立JUnitとして保存し、外側テスト1件へ証跡を畳み込みません。Docker image内も uv 0.13.3 と同じ uv.lock でテスト依存を固定します。apt/pipによるuv導入はテスト基盤専用であり、`cli_args.py` のruntime依存ではありません。
+Host Python matrixは速いcore contractに限定し、Docker/systemd stateへ依存しません。Docker integration laneは `tests/docker/Dockerfile` の test-only image (`python:3.14.0-slim-bookworm`) をbuildし、host側のDocker transport/Compose検証とは別に、その中で同じ `cli_args.py` と pytest harnessを使ってGit/curl/ls/journalctl/FFmpegを検証します。`CLI_ARGS_CONTAINER_REAL=1` は test image 自体に埋め込まれ、CIや利用者が手動で切り替える必要はありません。Host matrixではそのmarkerが存在しないためcontainer-real suiteは自動skipし、Docker image内では自動有効になります。container-real suite は独立JUnitとして保存し、外側テスト1件へ証跡を畳み込みません。Docker image内も最新の uv と、同じ uv.lock でテスト依存を固定します。apt/pipによるuv導入はテスト基盤専用であり、`cli_args.py` のruntime依存ではありません。
 
 Git/curl/ls等がhost環境に無い場合、host-real testcaseは理由付きskipになります。ただしDocker integration laneでは必要binaryをimageに明示的に入れるため、そのlaneではskipを許容しません。外部web siteやlive認証は不要です。
 
@@ -226,7 +226,7 @@ python -S -m unittest discover -s tests -p test_runtime_compatibility.py -v
 `pyproject.toml` is the canonical development dependency definition; legacy
 requirements files remain for downstream callers. Runtime metadata does not
 raise the source/vendoring floor to the development floor. CI pins setup-python
-v7.0.0 and setup-uv v10.3.0 by full commit SHA, and uses uv 0.13.3. Setup actions
+v7.0.0 and setup-uv v10.3.0 by full commit SHA, and uses the latest uv. Setup actions
 using Node 24 require runner 2.327.1 or newer (GitHub-hosted runners are used).
 
 CI also exercises the stdlib runtime floor and Python 3.14 on Windows and macOS.
