@@ -124,7 +124,7 @@ python -S examples/run_cli.py --format json --output result.json --timeout 30 --
 
 外部CLIを追加する前に、Python標準ライブラリの `python -m` / `python -c` / 通常importで同じ目的を安全に満たせないか確認します。AI coding時の既定の判断順は **stdlib → 既存host CLI → Docker/追加依存** です。
 
-代表例は `json.tool`、`zipfile`、`tarfile`、`http.server`、`platform`、`compileall`、`tempfile`。Issue #1（クローズ済み）では主要例を実際にCIで動かし、単なるcheat sheetにはしません。標準モジュールへ独自aliasを被せず、本来の `python -m module` 名を見せることでPython version/provenanceを曖昧にしません。
+代表例は `json.tool`、`zipfile`、`tarfile`、`http.server`、`platform`、`compileall`、`tempfile`。PR #1（マージ済み）では主要例を実際にCIで動かし、単なるcheat sheetにはしません。標準モジュールへ独自aliasを被せず、本来の `python -m module` 名を見せることでPython version/provenanceを曖昧にしません。
 
 詳細と「外部ツールを入れる前に確認する標準機能」は [docs/stdlib-command-surface.md](docs/stdlib-command-surface.md) を参照してください。
 
@@ -158,7 +158,7 @@ APIはauth・stable schema・pagination・server-side filtering/search・mutatio
 
 ## 失敗を証拠として残す
 
-Issue #1（クローズ済み）では、探索中の失敗を単なるノイズとして捨てません。通常CIとは分離した **negative evidence / intentional failures** lane で、子pytestを意図的に失敗させ、raw JUnit・stdout・stderr・receiptを保存します。
+PR #1（マージ済み）では、探索中の失敗を単なるノイズとして捨てません。通常CIとは分離した **negative evidence / intentional failures** lane で、子pytestを意図的に失敗させ、raw JUnit・stdout・stderr・receiptを保存します。
 
 現在は pass / assertion failure / setup error / strict xfail / strict XPASS を明示的な testcase 名で固定し、子pytestが本当に非0終了し、JUnit上の分類も期待どおりであることを外側のvalidatorが確認します。その raw JUnit は通常の7-report collectorには混ぜず、専用の pinned shared failure-identity consumerへ渡します。
 
