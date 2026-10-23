@@ -264,6 +264,39 @@ def test_cli_host_max_buffer_bytes_adds_margin():
     assert cli_args.cli_host_max_buffer_bytes(cap) == cap + cli_args.CLI_HOST_RESPONSE_MARGIN_BYTES
 
 
+def test_emit_cli_stdout_bytes_writes_measured_utf8(monkeypatch):
+    captured: list[bytes] = []
+
+    class _Buffer:
+        def write(self, data: bytes) -> int:
+            captured.append(data)
+            return len(data)
+
+        def flush(self) -> None:
+            return None
+
+    class _FakeStdout:
+        buffer = _Buffer()
+
+    monkeypatch.setattr(sys, "stdout", _FakeStdout())
+    payload = "日本語\n\x01\xff"
+    cli_args._emit_cli_stdout(payload, None)
+    assert captured == [payload.encode("utf-8")]
+
+
+def test_cli_render_stdout_bytes_match_utf8_on_pipe():
+    value = {"text": "日本語\nsecond", "n": 1}
+    proc = subprocess.run(
+        [sys.executable, "-S", str(CLI), "render", "--format", "json"],
+        input=json.dumps(value, ensure_ascii=False).encode("utf-8"),
+        capture_output=True,
+        cwd=ROOT,
+    )
+    assert proc.returncode == 0
+    expected = (json.dumps(value, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+    assert proc.stdout == expected
+
+
 def test_run_max_output_boundary_under_and_over():
     limit = 64 * 1024
     under = limit - 1
@@ -296,6 +329,29 @@ def test_run_max_output_boundary_under_and_over():
     assert body_over["output_limited"] is True
     assert body_over["returncode"] is None
     assert len(base64.b64decode(body_over["stdout_b64"])) == limit
+
+
+def test_run_max_output_exactly_at_limit_binary():
+    limit = 512
+    pattern = bytes((i % 256 for i in range(32)))
+    repeats = limit // len(pattern)
+    extra = limit - repeats * len(pattern)
+    blob = pattern * repeats + pattern[:extra]
+    code = "import sys; sys.stdout.buffer.write(" + repr(blob) + ")"
+    proc = invoke(
+        "run",
+        stdin=json.dumps(
+            {
+                "argv": [sys.executable, "-S", "-c", code],
+                "max_output": limit,
+                "response_max_bytes": cli_args.CLI_RUN_RESPONSE_MAX_BYTES,
+            },
+        ),
+    )
+    assert proc.returncode == 0
+    body = json.loads(proc.stdout)
+    assert body["output_limited"] is False
+    assert base64.b64decode(body["stdout_b64"]) == blob
 
 
 def test_run_binary_control_bytes_under_response_cap():

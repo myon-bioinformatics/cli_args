@@ -731,16 +731,47 @@ class _CliResponseTooLargeError(Exception):
     """Serialized CLI stdout would exceed the declared response_max_bytes cap (exit 1)."""
 
 
+def _check_response_max_bytes(encoded: bytes, response_max_bytes: int | None) -> None:
+    if response_max_bytes is None:
+        return
+    if type(response_max_bytes) is not int or response_max_bytes < 0:
+        raise _CliRequestError("response_max_bytes must be a nonnegative integer")
+    if len(encoded) > response_max_bytes:
+        raise _CliResponseTooLargeError(
+            f"response exceeds response_max_bytes ({response_max_bytes} bytes, got {len(encoded)})",
+        )
+
+
+def _emit_cli_stdout_bytes(encoded: bytes, response_max_bytes: int | None) -> None:
+    _check_response_max_bytes(encoded, response_max_bytes)
+    sys.stdout.buffer.write(encoded)
+    sys.stdout.buffer.flush()
+
+
 def _emit_cli_stdout(text: str, response_max_bytes: int | None) -> None:
-    encoded = text.encode("utf-8")
-    if response_max_bytes is not None:
-        if type(response_max_bytes) is not int or response_max_bytes < 0:
-            raise _CliRequestError("response_max_bytes must be a nonnegative integer")
-        if len(encoded) > response_max_bytes:
+    _emit_cli_stdout_bytes(text.encode("utf-8"), response_max_bytes)
+
+
+def _emit_cli_json_stdout(value: Any, response_max_bytes: int | None) -> None:
+    """Serialize JSON to stdout incrementally so oversized values abort before a full buffer."""
+    encoder = json.JSONEncoder(ensure_ascii=False, indent=2, allow_nan=False)
+    buffer = bytearray()
+    for piece in encoder.iterencode(value):
+        chunk = piece.encode("utf-8")
+        if response_max_bytes is not None and len(buffer) + len(chunk) > response_max_bytes:
             raise _CliResponseTooLargeError(
-                f"response exceeds response_max_bytes ({response_max_bytes} bytes, got {len(encoded)})",
+                f"response exceeds response_max_bytes ({response_max_bytes} bytes, "
+                f"got more than {response_max_bytes})",
             )
-    sys.stdout.write(text)
+        buffer.extend(chunk)
+    newline = b"\n"
+    if response_max_bytes is not None and len(buffer) + len(newline) > response_max_bytes:
+        raise _CliResponseTooLargeError(
+            f"response exceeds response_max_bytes ({response_max_bytes} bytes, "
+            f"got {len(buffer) + len(newline)})",
+        )
+    buffer.extend(newline)
+    _emit_cli_stdout_bytes(bytes(buffer), response_max_bytes)
 
 
 def _reject_json_non_finite(constant: str) -> Any:
@@ -856,6 +887,9 @@ def _cli_run() -> int:
 
 def _cli_render(format: str, response_max_bytes: int | None) -> int:
     payload = _load_stdin_json()
+    if format == "json":
+        _emit_cli_json_stdout(payload, response_max_bytes)
+        return 0
     try:
         rendered = render_output(payload, format=format)
     except ValueError as exc:

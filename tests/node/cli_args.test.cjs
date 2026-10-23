@@ -126,6 +126,16 @@ test("runCommand default max_output is 4 MiB with output_limited false", () => {
   assert.equal(cliHostMaxBufferBytes(CLI_RUN_RESPONSE_MAX_BYTES), CLI_RUN_RESPONSE_MAX_BYTES + 512);
 });
 
+test("runCommand max_output exactly at limit", () => {
+  const {runCommand} = require(path.join(ROOT, "cli_args.cjs"));
+  const limit = 512;
+  const code = `import sys; sys.stdout.buffer.write(bytes(i % 256 for i in range(${limit})))`;
+  const body = runCommand([PYTHON, "-S", "-c", code], {max_output: limit});
+  const expected = Buffer.from(Array.from({length: limit}, (_, i) => i % 256));
+  assert.equal(body.output_limited, false);
+  assert.equal(Buffer.from(body.stdout_b64, "base64").compare(expected), 0);
+});
+
 test("runCommand max_output boundary under and over", () => {
   const {runCommand} = require(path.join(ROOT, "cli_args.cjs"));
   const limit = 48 * 1024;
@@ -176,6 +186,27 @@ test("render deep nesting stays within response cap", () => {
   const out = render(value, "json");
   assert.ok(out.length > 500_000);
   assert.deepEqual(JSON.parse(out), value);
+});
+
+test("runCommand rejects stdin larger than CLI_STDIN_MAX_BYTES", () => {
+  const {runCommand, CliArgsRequestError, CLI_STDIN_MAX_BYTES, STDIN_EXCEEDS_MSG} = require(path.join(
+    ROOT,
+    "cli_args.cjs",
+  ));
+  const padding = "a".repeat(CLI_STDIN_MAX_BYTES);
+  assert.throws(
+    () => runCommand([PYTHON, "-S", "-c", "print(1)", padding]),
+    (err) => err instanceof CliArgsRequestError && err.message === STDIN_EXCEEDS_MSG,
+  );
+});
+
+test("render rejects stdin larger than CLI_STDIN_MAX_BYTES", () => {
+  const {render, CliArgsRequestError, STDIN_EXCEEDS_MSG} = require(path.join(ROOT, "cli_args.cjs"));
+  const huge = {data: "x".repeat(4 * 1024 * 1024 + 64)};
+  assert.throws(
+    () => render(huge, "json"),
+    (err) => err instanceof CliArgsRequestError && err.message === STDIN_EXCEEDS_MSG,
+  );
 });
 
 test("runCommand rejects max_output above CLI_RUN_MAX_OUTPUT_BYTES", () => {

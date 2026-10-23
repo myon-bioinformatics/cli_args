@@ -38,6 +38,17 @@ function cliHostMaxBufferBytes(responseMaxBytes) {
 /**
  * @param {object} opts
  */
+const STDIN_EXCEEDS_MSG = "stdin exceeds size limit";
+
+/**
+ * @param {string} input
+ */
+function assertStdinWithinLimit(input) {
+  if (Buffer.byteLength(input, "utf8") > CLI_STDIN_MAX_BYTES) {
+    throw new CliArgsRequestError(STDIN_EXCEEDS_MSG);
+  }
+}
+
 function resolveRunMaxOutput(opts) {
   const value = opts.max_output !== undefined ? opts.max_output : CLI_RUN_DEFAULT_MAX_OUTPUT_BYTES;
   if (!Number.isInteger(value) || value < 0) {
@@ -58,6 +69,10 @@ function resolveRunMaxOutput(opts) {
 function mapLaunchError(err, failureFallback) {
   const msg = String(err && err.message ? err.message : err);
   const code = err && err.code ? String(err.code) : "";
+  const causeCode = err && err.cause && err.cause.code ? String(err.cause.code) : "";
+  if (code === "EPIPE" || causeCode === "EPIPE" || /\bEPIPE\b/.test(msg)) {
+    throw new CliArgsRequestError(STDIN_EXCEEDS_MSG);
+  }
   if (code === "ENOBUFS" || /\bENOBUFS\b/.test(msg)) {
     throw new Error(
       ERR_PREFIX +
@@ -106,6 +121,7 @@ function runCommand(argv, opts = {}) {
   if (opts.input !== undefined) request.input = opts.input;
   if (opts.dry_run !== undefined) request.dry_run = opts.dry_run;
   const input = `${JSON.stringify(request)}\n`;
+  assertStdinWithinLimit(input);
   try {
     const result = run(PY_SCRIPT, ["run"], {
       ...PY_LAUNCH,
@@ -129,6 +145,7 @@ function render(value, format = "text", opts = {}) {
     throw new Error("format must be text or json");
   }
   const input = `${JSON.stringify(value)}\n`;
+  assertStdinWithinLimit(input);
   try {
     const result = run(
       PY_SCRIPT,
@@ -161,4 +178,6 @@ module.exports = {
   CLI_RENDER_RESPONSE_MAX_BYTES,
   CLI_HOST_RESPONSE_MARGIN_BYTES,
   cliHostMaxBufferBytes,
+  assertStdinWithinLimit,
+  STDIN_EXCEEDS_MSG,
 };
