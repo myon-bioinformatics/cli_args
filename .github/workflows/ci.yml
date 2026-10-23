@@ -48,6 +48,18 @@ jobs:
           ref: ${{ steps.parent-vendor-tools.outputs.sha }}
           path: .vendor-sync-tools
           persist-credentials: false
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "latest"
+      - name: Sync locked development environment
+        shell: bash
+        run: |
+          uv sync --locked --python "$(python -c 'import sys; print(sys.executable)')"
+          python -c "import os; from pathlib import Path; print(Path('.venv').resolve() / ('Scripts' if os.name == 'nt' else 'bin'))" >> "$GITHUB_PATH"
+      - name: Network parent vendor tools resolve regressions
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: python -m pytest -q -m network tests/test_parent_vendor_tools_resolve.py
       - name: Verify and recreate locked vendor snapshot
         shell: bash
         run: |

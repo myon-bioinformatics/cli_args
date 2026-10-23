@@ -43,3 +43,16 @@ def test_vendor_locked_job_resolves_parent_main_at_runtime():
     assert "ls-remote" in script and "--symref" in script
     assert "638801160" in script
     assert "shell=True" not in script
+
+
+def test_vendor_locked_job_runs_network_parent_vendor_resolve_regressions():
+    path = ROOT / ".github/workflows/ci.yml"
+    text = path.read_text(encoding="utf-8")
+    assert "Network parent vendor tools resolve regressions" in text
+    assert (
+        "python -m pytest -q -m network tests/test_parent_vendor_tools_resolve.py"
+        in text
+    )
+    marker = "Network parent vendor tools resolve regressions"
+    block = text.split(marker, 1)[1].split("- name:", 1)[0]
+    assert "GITHUB_TOKEN: ${{ github.token }}" in block
