@@ -109,6 +109,20 @@ python -S examples/run_cli.py --format json --dry-run -- git status --short
 python -S examples/run_cli.py --format json --output result.json --timeout 30 -- python -m pytest -q --tb=short -ra
 ```
 
+`cli_args.py` 自体にも、Node 等のホストから `python -S cli_args.py` で呼べる機械向け入口があります（import 時は argv を解析しません）。
+
+| サブコマンド | 入力 | 出力 |
+|---|---|---|
+| `run` | stdin に JSON リクエスト | `CommandResult` を JSON で stdout |
+| `render --format text\|json` | stdin に任意の JSON 値 | `render_output` の結果を stdout |
+
+`run` の JSON オブジェクトは `argv`（必須）に加え、任意で `timeout` / `cwd` / `env` / `input` / `max_output` / `dry_run` を受け取ります。未知キー・型不一致・不正 JSON は終了 **2**（stderr 1行）。リクエストを処理できた場合は終了 **0** で、子プロセスの終了コードは JSON の `returncode` に入ります。起動失敗などの内部エラーは **1** です。`shell` は受け付けません。
+
+```bash
+printf '%s' '{"argv":["python","-c","print(1)"],"dry_run":true}' | python -S cli_args.py run
+printf '%s' '{"argv":["日本語"],"returncode":0,"stdout":"","stderr":"","executed":true}' | python -S cli_args.py render --format json
+```
+
 ラッパー引数と実行先引数は必須の `--` で区切ります。実行先の `--format` などは境界の後ろに置けます。
 
 - 実行結果: `argv`, `returncode`, `stdout`, `stderr`, `executed`, `timed_out`。

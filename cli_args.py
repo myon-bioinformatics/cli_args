@@ -20,6 +20,19 @@ import tempfile
 from threading import Event, Lock, Thread
 from typing import Any, Iterable, Mapping, Sequence, TextIO
 
+
+def _read_project_version() -> str:
+    pyproject = Path(__file__).resolve().with_name("pyproject.toml")
+    if pyproject.is_file():
+        for line in pyproject.read_text(encoding="utf-8").splitlines():
+            stripped = line.strip()
+            if stripped.startswith("version = "):
+                return stripped.split("=", 1)[1].strip().strip('"').strip("'")
+    return "0.0.0"
+
+
+__version__ = _read_project_version()
+
 __all__ = [
     "Argument", "make_parser", "parse_args", "add_output_arguments",
     "add_execution_arguments", "require_when", "positive_seconds",
@@ -517,3 +530,132 @@ def build_env(extra: Mapping[str, str] | Sequence[str] | None = None, *,
         result[key] = value
 
     return result
+
+
+class _CliRequestError(Exception):
+    """Invalid stdin JSON or request fields (exit 2)."""
+
+
+_RUN_REQUEST_KEYS = frozenset({"argv", "timeout", "cwd", "env", "input", "max_output", "dry_run"})
+
+
+def _parse_run_request(payload: Any) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise _CliRequestError("request must be a JSON object")
+    unknown = sorted(set(payload) - _RUN_REQUEST_KEYS)
+    if unknown:
+        raise _CliRequestError("unknown request keys: " + ", ".join(unknown))
+    if "argv" not in payload:
+        raise _CliRequestError("argv is required")
+    argv = payload["argv"]
+    if not isinstance(argv, list):
+        raise _CliRequestError("argv must be a JSON array")
+    try:
+        command = Command(tuple(argv))
+    except (TypeError, ValueError) as exc:
+        raise _CliRequestError(str(exc)) from exc
+    timeout = payload.get("timeout")
+    if timeout is not None:
+        if type(timeout) not in (int, float) or not math.isfinite(timeout) or timeout <= 0:
+            raise _CliRequestError("timeout must be a positive finite number")
+    cwd = payload.get("cwd")
+    if cwd is not None and not isinstance(cwd, str):
+        raise _CliRequestError("cwd must be a string")
+    env = payload.get("env")
+    env_map: dict[str, str] | None = None
+    if env is not None:
+        if not isinstance(env, dict):
+            raise _CliRequestError("env must be a JSON object")
+        try:
+            env_map = build_env(env, inherit=True)
+        except (TypeError, ValueError) as exc:
+            raise _CliRequestError(str(exc)) from exc
+    stdin = payload.get("input")
+    if stdin is not None and not isinstance(stdin, str):
+        raise _CliRequestError("input must be a string or null")
+    max_output = payload.get("max_output")
+    if max_output is not None and (type(max_output) is not int or max_output < 0):
+        raise _CliRequestError("max_output must be a nonnegative integer")
+    dry_run = payload.get("dry_run", False)
+    if type(dry_run) is not bool:
+        raise _CliRequestError("dry_run must be a boolean")
+    return {
+        "command": command,
+        "cwd": cwd,
+        "timeout": timeout,
+        "env": env_map,
+        "stdin": stdin,
+        "max_output_bytes": max_output,
+        "dry_run": dry_run,
+    }
+
+
+def _load_stdin_json() -> Any:
+    raw = sys.stdin.read()
+    if not raw.strip():
+        raise _CliRequestError("stdin must contain JSON")
+    try:
+        return json.loads(raw)
+    except json.JSONDecodeError as exc:
+        raise _CliRequestError("invalid JSON: " + exc.msg) from exc
+
+
+def _cli_run() -> int:
+    request = _parse_run_request(_load_stdin_json())
+    try:
+        result = run_command(
+            request["command"],
+            cwd=request["cwd"],
+            timeout=request["timeout"],
+            dry_run=request["dry_run"],
+            env=request["env"],
+            stdin=request["stdin"],
+            max_output_bytes=request["max_output_bytes"],
+        )
+    except OSError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    sys.stdout.write(render_output(result, format="json"))
+    return 0
+
+
+def _cli_render(format: str) -> int:
+    payload = _load_stdin_json()
+    sys.stdout.write(render_output(payload, format=format))
+    return 0
+
+
+def _main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="cli_args.py",
+        description="Machine-facing entry points for run_command and render_output.",
+        exit_on_error=False,
+    )
+    parser.add_argument("--version", action="version", version="%(prog)s " + __version__)
+    subparsers = parser.add_subparsers(dest="command", required=False)
+    subparsers.add_parser("run", help="run a command from a JSON request on stdin")
+    render_parser = subparsers.add_parser("render", help="render a JSON value from stdin")
+    render_parser.add_argument("--format", choices=("text", "json"), default="text")
+    try:
+        args = parser.parse_args(None if argv is None else list(argv))
+    except argparse.ArgumentError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    if args.command is None:
+        parser.print_usage(sys.stderr)
+        print("cli_args.py: error: command required (run or render)", file=sys.stderr)
+        return 2
+    try:
+        if args.command == "run":
+            return _cli_run()
+        return _cli_render(args.format)
+    except _CliRequestError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    except Exception as exc:
+        print(str(exc) or exc.__class__.__name__, file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(_main())
