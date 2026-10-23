@@ -731,7 +731,7 @@ class _CliResponseTooLargeError(Exception):
     """Serialized CLI stdout would exceed the declared response_max_bytes cap (exit 1)."""
 
 
-def _check_response_max_bytes(encoded: bytes, response_max_bytes: int | None) -> None:
+def _check_response_max_bytes(encoded: bytes | bytearray, response_max_bytes: int | None) -> None:
     if response_max_bytes is None:
         return
     if type(response_max_bytes) is not int or response_max_bytes < 0:
@@ -742,10 +742,15 @@ def _check_response_max_bytes(encoded: bytes, response_max_bytes: int | None) ->
         )
 
 
-def _emit_cli_stdout_bytes(encoded: bytes, response_max_bytes: int | None) -> None:
+def _emit_cli_stdout_bytes(encoded: bytes | bytearray, response_max_bytes: int | None) -> None:
     _check_response_max_bytes(encoded, response_max_bytes)
-    sys.stdout.buffer.write(encoded)
-    sys.stdout.buffer.flush()
+    binary_out = getattr(sys.stdout, "buffer", None)
+    if binary_out is not None:
+        binary_out.write(encoded)
+        binary_out.flush()
+    else:
+        sys.stdout.write(encoded.decode("utf-8"))
+        sys.stdout.flush()
 
 
 def _emit_cli_stdout(text: str, response_max_bytes: int | None) -> None:
@@ -771,7 +776,7 @@ def _emit_cli_json_stdout(value: Any, response_max_bytes: int | None) -> None:
             f"got {len(buffer) + len(newline)})",
         )
     buffer.extend(newline)
-    _emit_cli_stdout_bytes(bytes(buffer), response_max_bytes)
+    _emit_cli_stdout_bytes(buffer, response_max_bytes)
 
 
 def _reject_json_non_finite(constant: str) -> Any:

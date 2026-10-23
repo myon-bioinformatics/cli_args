@@ -1,4 +1,5 @@
 import base64
+import contextlib
 import dataclasses
 import io
 import json
@@ -45,11 +46,19 @@ def test_run_command_asdict_is_json_serializable():
 
 
 def invoke(*argv: str, stdin: str | bytes = "") -> subprocess.CompletedProcess[str]:
+    if isinstance(stdin, str):
+        return subprocess.run(
+            [sys.executable, "-S", str(CLI), *argv],
+            input=stdin,
+            capture_output=True,
+            text=True,
+            encoding="utf-8",
+            cwd=ROOT,
+        )
     return subprocess.run(
         [sys.executable, "-S", str(CLI), *argv],
         input=stdin,
         capture_output=True,
-        text=isinstance(stdin, str),
         cwd=ROOT,
     )
 
@@ -67,6 +76,7 @@ def test_version_on_standalone_copy(tmp_path: Path):
         [sys.executable, "-S", str(standalone), "--version"],
         capture_output=True,
         text=True,
+        encoding="utf-8",
     )
     assert proc.returncode == 0
     assert proc.stdout.strip() == f"cli_args.py {cli_args.__version__}"
@@ -255,8 +265,25 @@ def test_import_main_has_no_side_effects():
         cwd=ROOT,
         capture_output=True,
         text=True,
+        encoding="utf-8",
     )
     assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
+
+
+def test_main_render_text_with_redirect_stdout():
+    value = {"title": "日本語", "n": 1}
+    capture = io.StringIO()
+    old_stdin = sys.stdin
+    sys.stdin = io.TextIOWrapper(
+        io.BytesIO(json.dumps(value).encode("utf-8")),
+        encoding="utf-8",
+    )
+    try:
+        with contextlib.redirect_stdout(capture):
+            assert cli_args._main(["render", "--format", "text"]) == 0
+    finally:
+        sys.stdin = old_stdin
+    assert "日本語" in capture.getvalue()
 
 
 def test_cli_host_max_buffer_bytes_adds_margin():

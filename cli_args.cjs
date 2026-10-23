@@ -35,9 +35,6 @@ function cliHostMaxBufferBytes(responseMaxBytes) {
   return responseMaxBytes + CLI_HOST_RESPONSE_MARGIN_BYTES;
 }
 
-/**
- * @param {object} opts
- */
 const STDIN_EXCEEDS_MSG = "stdin exceeds size limit";
 
 /**
@@ -49,6 +46,9 @@ function assertStdinWithinLimit(input) {
   }
 }
 
+/**
+ * @param {object} opts
+ */
 function resolveRunMaxOutput(opts) {
   const value = opts.max_output !== undefined ? opts.max_output : CLI_RUN_DEFAULT_MAX_OUTPUT_BYTES;
   if (!Number.isInteger(value) || value < 0) {
@@ -65,12 +65,16 @@ function resolveRunMaxOutput(opts) {
 /**
  * @param {unknown} err
  * @param {string} failureFallback
+ * @param {{stdinPrechecked?: boolean}} [context]
  */
-function mapLaunchError(err, failureFallback) {
+function mapLaunchError(err, failureFallback, context = {}) {
   const msg = String(err && err.message ? err.message : err);
   const code = err && err.code ? String(err.code) : "";
   const causeCode = err && err.cause && err.cause.code ? String(err.cause.code) : "";
   if (code === "EPIPE" || causeCode === "EPIPE" || /\bEPIPE\b/.test(msg)) {
+    if (context.stdinPrechecked) {
+      throw new Error(ERR_PREFIX + "Python stdin pipe closed unexpectedly");
+    }
     throw new CliArgsRequestError(STDIN_EXCEEDS_MSG);
   }
   if (code === "ENOBUFS" || /\bENOBUFS\b/.test(msg)) {
@@ -131,7 +135,7 @@ function runCommand(argv, opts = {}) {
     });
     return JSON.parse(String(result.stdout));
   } catch (err) {
-    mapLaunchError(err, "cli_args run failed");
+    mapLaunchError(err, "cli_args run failed", {stdinPrechecked: true});
   }
 }
 
@@ -159,7 +163,7 @@ function render(value, format = "text", opts = {}) {
     );
     return String(result.stdout);
   } catch (err) {
-    mapLaunchError(err, "cli_args render failed");
+    mapLaunchError(err, "cli_args render failed", {stdinPrechecked: true});
   }
 }
 
