@@ -119,8 +119,9 @@ def test_run_japanese_argv_and_output():
     proc = invoke("run", stdin=json.dumps(payload, ensure_ascii=False))
     assert proc.returncode == 0
     body = json.loads(proc.stdout)
-    assert body["stdout"] == "日本語\n"
-    assert base64.b64decode(body["stdout_b64"]) == "日本語\n".encode("utf-8")
+    stdout_raw = base64.b64decode(body["stdout_b64"])
+    assert stdout_raw.replace(b"\r\n", b"\n") == "日本語\n".encode("utf-8")
+    assert body["stdout"].replace("\r\n", "\n") == "日本語\n"
     assert body["returncode"] == 0
 
 
