@@ -178,6 +178,7 @@ only the missing catalog entries and focused execution evidence are added. There
 | Git `--no-optional-locks status --porcelain=v2 -z --untracked-files=all` | Observe individual untracked files while suppressing optional index refresh/locking. | Host-real: an existing index.lock and index bytes remain unchanged. This is not a general read-only enforcement switch for arbitrary Git subcommands. |
 | Docker `inspect --format ...`, Compose repeated `-f FILE` | Select image metadata / layer configuration using existing Docker grammar. | Existing Docker-real tests assert WorkingDir/environment and real Compose config services. No general template engine is added here. |
 | FFmpeg `-nostdin -hide_banner -loglevel error -f lavfi ... -f null -` | Run a bounded synthetic media probe without interactive stdin or an output artifact. | Existing container-real lavfi-to-null test; this is not evidence for all media formats/codecs. |
+| `cli_args` `node_command` / `run_node` / `node_or_command` | Keep Node entrypoints on the same argv contract as other CLIs: `[node, *node_flags, script, *args]`, opt-in auto-wrap for `.js`/`.cjs`/`.mjs`, explicit `node`/`CLI_ARGS_NODE` fail closed, Node 18+ probe. | Host-real: [tests/test_node_bridge.py](../tests/test_node_bridge.py) on Node 18 and latest in CI; Windows/macOS portability lane. |
 
 Origins:
 - [Current PR host tests](../tests/test_commands.py) already use curl configuration/proxy controls and pytest addopts override.
