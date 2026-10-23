@@ -273,7 +273,7 @@ def test_render_json_and_text():
 
     text_proc = invoke("render", "--format", "text", stdin=json.dumps(value))
     assert text_proc.returncode == 0
-    assert text_proc.stdout.replace("\r\n", "\n") == "{'title': '日本語', 'n': 1}\n"
+    assert text_proc.stdout == "{'title': '日本語', 'n': 1}\n"
 
 
 def test_cli_usage_and_version():

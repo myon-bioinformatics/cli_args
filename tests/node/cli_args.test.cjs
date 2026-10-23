@@ -21,25 +21,28 @@ function lockEntry() {
   return entry;
 }
 
-function writeFakePython(dir) {
-  const marker = path.join(dir, "marker.txt");
-  const fake = path.join(dir, "fake-python");
-  fs.writeFileSync(
-    fake,
-    `#!/usr/bin/env python3
-import sys
-marker = ${JSON.stringify(marker)}
-if "-c" in sys.argv:
-    i = sys.argv.index("-c")
-    if i + 1 < len(sys.argv) and "version_info" in sys.argv[i + 1]:
-        print("3.12")
-        raise SystemExit(0)
-open(marker, "w", encoding="utf-8").write("ran")
-raise SystemExit(0)
-`,
-    {encoding: "utf8", mode: 0o755},
-  );
-  return {fake, marker};
+function resolvedPythonExecutable() {
+  const result = spawnSync(PYTHON, ["-c", "import sys; print(sys.executable)"], {encoding: "utf8"});
+  assert.equal(result.status, 0, result.stderr);
+  return result.stdout.trim();
+}
+
+function withCliArgsPython(value, fn) {
+  const prior = process.env.CLI_ARGS_PYTHON;
+  if (value === undefined) {
+    delete process.env.CLI_ARGS_PYTHON;
+  } else {
+    process.env.CLI_ARGS_PYTHON = value;
+  }
+  try {
+    fn();
+  } finally {
+    if (prior === undefined) {
+      delete process.env.CLI_ARGS_PYTHON;
+    } else {
+      process.env.CLI_ARGS_PYTHON = prior;
+    }
+  }
 }
 
 test("vendored py_launch.cjs matches vendor.lock.json", () => {
@@ -101,27 +104,21 @@ test("render text and json", () => {
   assert.deepEqual(JSON.parse(render(value, "json")), value);
 });
 
-test("CLI_ARGS_PYTHON is used when set explicitly", (t) => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cli-args-fake-py-"));
-  t.after(() => fs.rmSync(dir, {recursive: true, force: true}));
+test("CLI_ARGS_PYTHON env is honored without silent fallback", () => {
   const {runCommand} = require(path.join(ROOT, "cli_args.cjs"));
-  if (process.platform === "win32") {
-    const resolved = spawnSync(PYTHON, ["-c", "import sys; print(sys.executable)"], {
-      encoding: "utf8",
-    }).stdout.trim();
-    const alt = path.join(dir, "alt-python.exe");
-    fs.copyFileSync(resolved, alt);
-    const body = runCommand([resolved, "-S", "-c", "print('alt-interpreter')"], {python: alt});
-    assert.equal(normalizeNewlines(body.stdout), "alt-interpreter\n");
-    return;
-  }
-  const {fake, marker} = writeFakePython(dir);
-  try {
-    runCommand([PYTHON, "-S", "-c", "print(1)"], {python: fake});
-  } catch {
-    // interpreter ran even if the script failed afterward
-  }
-  assert.equal(fs.readFileSync(marker, "utf8"), "ran");
+  const resolved = resolvedPythonExecutable();
+  const missing = path.join(os.tmpdir(), `cli-args-missing-python-${process.pid}`);
+  withCliArgsPython(missing, () => {
+    assert.throws(
+      () => runCommand([PYTHON, "-S", "-c", "print(1)"]),
+      (err) => err.message.startsWith("cli_args Python process failed: "),
+    );
+  });
+  withCliArgsPython(resolved, () => {
+    const body = runCommand([PYTHON, "-S", "-c", "print(9)"]);
+    assert.equal(body.returncode, 0);
+    assert.equal(normalizeNewlines(body.stdout), "9\n");
+  });
 });
 
 test("invalid run request maps Python exit 2 to CliArgsRequestError", () => {
