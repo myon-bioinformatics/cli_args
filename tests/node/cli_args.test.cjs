@@ -114,3 +114,48 @@ test("cli_args.cjs CLI exits 2 when CLI_ARGS_PYTHON is unusable", () => {
   });
   assert.equal(result.status, 2);
 });
+
+test("runCommand applies default max_output and fits derived maxBuffer", () => {
+  const {
+    runCommand,
+    CLI_RUN_DEFAULT_MAX_OUTPUT_BYTES,
+    cliRunResponseMaxBufferBytes,
+  } = require(path.join(ROOT, "cli_args.cjs"));
+  const limit = CLI_RUN_DEFAULT_MAX_OUTPUT_BYTES;
+  const code = `import sys; sys.stdout.buffer.write(b"z" * ${limit})`;
+  const body = runCommand([PYTHON, "-S", "-c", code]);
+  assert.equal(body.output_limited, undefined);
+  assert.equal(Buffer.from(body.stdout_b64, "base64").length, limit);
+  assert.ok(cliRunResponseMaxBufferBytes(limit) > limit);
+});
+
+test("runCommand max_output boundary under and over", () => {
+  const {runCommand} = require(path.join(ROOT, "cli_args.cjs"));
+  const limit = 48 * 1024;
+  const under = limit - 1;
+  const ok = runCommand(
+    [PYTHON, "-S", "-c", `import sys; sys.stdout.buffer.write(b"x" * ${under})`],
+    {max_output: limit},
+  );
+  assert.notEqual(ok.output_limited, true);
+  assert.equal(Buffer.from(ok.stdout_b64, "base64").length, under);
+
+  const limited = runCommand(
+    [PYTHON, "-S", "-c", `import sys; sys.stdout.buffer.write(b"x" * ${limit + 1})`],
+    {max_output: limit},
+  );
+  assert.equal(limited.output_limited, true);
+  assert.equal(limited.returncode, null);
+  assert.equal(Buffer.from(limited.stdout_b64, "base64").length, limit);
+});
+
+test("runCommand rejects max_output above CLI_RUN_MAX_OUTPUT_BYTES", () => {
+  const {runCommand, CliArgsRequestError, CLI_RUN_MAX_OUTPUT_BYTES} = require(path.join(
+    ROOT,
+    "cli_args.cjs",
+  ));
+  assert.throws(
+    () => runCommand([PYTHON, "-S", "-c", "print(1)"], {max_output: CLI_RUN_MAX_OUTPUT_BYTES + 1}),
+    (err) => err instanceof CliArgsRequestError && /max_output exceeds limit/.test(err.message),
+  );
+});

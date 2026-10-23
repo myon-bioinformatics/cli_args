@@ -255,3 +255,58 @@ def test_import_main_has_no_side_effects():
         text=True,
     )
     assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
+
+
+def test_cli_run_response_max_buffer_bytes_monotonic():
+    assert cli_args.cli_run_response_max_buffer_bytes(0) == 8192
+    low = cli_args.cli_run_response_max_buffer_bytes(1024)
+    high = cli_args.cli_run_response_max_buffer_bytes(2048)
+    assert low < high
+
+
+def test_run_max_output_boundary_under_and_over():
+    limit = 64 * 1024
+    under = limit - 1
+    over = limit + 1
+    code_under = (
+        "import sys; sys.stdout.buffer.write(b'x' * "
+        f"{under}); sys.stderr.buffer.write(b'y')"
+    )
+    proc_under = invoke(
+        "run",
+        stdin=json.dumps(
+            {"argv": [sys.executable, "-S", "-c", code_under], "max_output": limit},
+        ),
+    )
+    assert proc_under.returncode == 0
+    body_under = json.loads(proc_under.stdout)
+    assert body_under.get("output_limited") is not True
+    assert len(base64.b64decode(body_under["stdout_b64"])) == under
+    assert len(base64.b64decode(body_under["stderr_b64"])) == 1
+
+    code_over = f"import sys; sys.stdout.buffer.write(b'x' * {over})"
+    proc_over = invoke(
+        "run",
+        stdin=json.dumps(
+            {"argv": [sys.executable, "-S", "-c", code_over], "max_output": limit},
+        ),
+    )
+    assert proc_over.returncode == 0
+    body_over = json.loads(proc_over.stdout)
+    assert body_over["output_limited"] is True
+    assert body_over["returncode"] is None
+    assert len(base64.b64decode(body_over["stdout_b64"])) == limit
+
+
+def test_run_max_output_at_limit_fits_node_buffer_formula():
+    limit = cli_args.CLI_RUN_DEFAULT_MAX_OUTPUT_BYTES
+    code = f"import sys; sys.stdout.buffer.write(b'a' * {limit})"
+    proc = invoke(
+        "run",
+        stdin=json.dumps(
+            {"argv": [sys.executable, "-S", "-c", code], "max_output": limit},
+        ),
+    )
+    assert proc.returncode == 0
+    encoded = proc.stdout.encode("utf-8")
+    assert len(encoded) <= cli_args.cli_run_response_max_buffer_bytes(limit)

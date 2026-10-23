@@ -696,8 +696,31 @@ class _CliRequestError(Exception):
     """Invalid stdin JSON or request fields (exit 2)."""
 
 
-_CLI_STDIN_MAX_BYTES = 4 * 1024 * 1024
+CLI_STDIN_MAX_BYTES = 4 * 1024 * 1024
+"""Maximum UTF-8 bytes read from stdin by ``cli_args.py run`` / ``render``."""
+
+CLI_RUN_DEFAULT_MAX_OUTPUT_BYTES = 4 * 1024 * 1024
+"""Default combined stdout/stderr byte cap for Node ``cli_args.cjs`` (always sent as ``max_output``)."""
+
+CLI_RUN_MAX_OUTPUT_BYTES = 8 * 1024 * 1024
+"""Maximum ``max_output`` the Node bridge accepts; larger child output needs another host path."""
+
+_CLI_STDIN_MAX_BYTES = CLI_STDIN_MAX_BYTES
 _RUN_REQUEST_KEYS = frozenset({"argv", "timeout", "cwd", "env", "input", "max_output", "dry_run"})
+
+
+def cli_run_response_max_buffer_bytes(max_output_bytes: int) -> int:
+    """``maxBuffer`` for capturing ``cli_args.py run`` JSON (decoded text + base64 + overhead)."""
+    if type(max_output_bytes) is not int or max_output_bytes < 0:
+        raise ValueError("max_output_bytes must be a nonnegative integer")
+    # Worst case: combined raw stdout+stderr <= max_output_bytes, each byte may appear
+    # as U+FFFD in JSON (3 UTF-8 bytes) and again in standard base64 (~4/3 expansion).
+    return max_output_bytes * 14 // 3 + 8192
+
+
+def cli_render_response_max_buffer_bytes() -> int:
+    """``maxBuffer`` for capturing ``cli_args.py render`` stdout from max-size stdin JSON."""
+    return CLI_STDIN_MAX_BYTES * 4 + 8192
 
 
 def _reject_json_non_finite(constant: str) -> Any:

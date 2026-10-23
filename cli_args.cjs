@@ -6,7 +6,13 @@ const {run, main} = require("./vendor/py_launch.cjs");
 const PY_SCRIPT = path.join(__dirname, "cli_args.py");
 const PY_LAUNCH = {envVar: "CLI_ARGS_PYTHON", noSite: true};
 const ERR_PREFIX = "cli_args Python process failed: ";
-const MAX_RUN_BUFFER = 16 * 1024 * 1024;
+
+/** Keep in sync with cli_args.CLI_STDIN_MAX_BYTES */
+const CLI_STDIN_MAX_BYTES = 4 * 1024 * 1024;
+/** Keep in sync with cli_args.CLI_RUN_DEFAULT_MAX_OUTPUT_BYTES */
+const CLI_RUN_DEFAULT_MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
+/** Keep in sync with cli_args.CLI_RUN_MAX_OUTPUT_BYTES */
+const CLI_RUN_MAX_OUTPUT_BYTES = 8 * 1024 * 1024;
 
 class CliArgsRequestError extends Error {
   constructor(message) {
@@ -15,12 +21,48 @@ class CliArgsRequestError extends Error {
   }
 }
 
+/** @param {number} maxOutputBytes */
+function cliRunResponseMaxBufferBytes(maxOutputBytes) {
+  if (!Number.isInteger(maxOutputBytes) || maxOutputBytes < 0) {
+    throw new CliArgsRequestError("max_output must be a nonnegative integer");
+  }
+  return Math.floor(maxOutputBytes * 14 / 3) + 8192;
+}
+
+function cliRenderResponseMaxBufferBytes() {
+  return CLI_STDIN_MAX_BYTES * 4 + 8192;
+}
+
+/**
+ * @param {object} opts
+ */
+function resolveRunMaxOutput(opts) {
+  const value = opts.max_output !== undefined ? opts.max_output : CLI_RUN_DEFAULT_MAX_OUTPUT_BYTES;
+  if (!Number.isInteger(value) || value < 0) {
+    throw new CliArgsRequestError("max_output must be a nonnegative integer");
+  }
+  if (value > CLI_RUN_MAX_OUTPUT_BYTES) {
+    throw new CliArgsRequestError(
+      `max_output exceeds limit (${CLI_RUN_MAX_OUTPUT_BYTES} bytes); see CLI_RUN_MAX_OUTPUT_BYTES in cli_args.py`,
+    );
+  }
+  return value;
+}
+
 /**
  * @param {unknown} err
  * @param {string} failureFallback
  */
 function mapLaunchError(err, failureFallback) {
   const msg = String(err && err.message ? err.message : err);
+  const code = err && err.code ? String(err.code) : "";
+  if (code === "ENOBUFS" || /\bENOBUFS\b/.test(msg)) {
+    throw new Error(
+      ERR_PREFIX +
+        "Python response exceeded the Node capture buffer; reduce child output, set a lower max_output, " +
+        "or call cli_args.py directly without the Node wrapper",
+    );
+  }
   if (msg.startsWith("py_launch: Python process failed: ")) {
     throw new Error(ERR_PREFIX + msg.slice("py_launch: Python process failed: ".length));
   }
@@ -46,12 +88,12 @@ function mapLaunchError(err, failureFallback) {
  * @param {object} [opts]
  */
 function runCommand(argv, opts = {}) {
-  const request = {argv};
+  const maxOutput = resolveRunMaxOutput(opts);
+  const request = {argv, max_output: maxOutput};
   if (opts.cwd !== undefined) request.cwd = opts.cwd;
   if (opts.timeout !== undefined) request.timeout = opts.timeout;
   if (opts.env !== undefined) request.env = opts.env;
   if (opts.input !== undefined) request.input = opts.input;
-  if (opts.max_output !== undefined) request.max_output = opts.max_output;
   if (opts.dry_run !== undefined) request.dry_run = opts.dry_run;
   const input = `${JSON.stringify(request)}\n`;
   try {
@@ -59,7 +101,7 @@ function runCommand(argv, opts = {}) {
       ...PY_LAUNCH,
       python: opts.python,
       input,
-      maxBuffer: MAX_RUN_BUFFER,
+      maxBuffer: cliRunResponseMaxBufferBytes(maxOutput),
     });
     return JSON.parse(String(result.stdout));
   } catch (err) {
@@ -82,7 +124,7 @@ function render(value, format = "text", opts = {}) {
       ...PY_LAUNCH,
       python: opts.python,
       input,
-      maxBuffer: MAX_RUN_BUFFER,
+      maxBuffer: cliRenderResponseMaxBufferBytes(),
     });
     return String(result.stdout);
   } catch (err) {
@@ -94,4 +136,13 @@ if (require.main === module) {
   main(PY_SCRIPT, PY_LAUNCH);
 }
 
-module.exports = {runCommand, render, CliArgsRequestError};
+module.exports = {
+  runCommand,
+  render,
+  CliArgsRequestError,
+  CLI_STDIN_MAX_BYTES,
+  CLI_RUN_DEFAULT_MAX_OUTPUT_BYTES,
+  CLI_RUN_MAX_OUTPUT_BYTES,
+  cliRunResponseMaxBufferBytes,
+  cliRenderResponseMaxBufferBytes,
+};
