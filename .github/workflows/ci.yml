@@ -68,6 +68,9 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: ${{ matrix.python }}
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 'latest'
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           version: "latest"
@@ -83,6 +86,40 @@ jobs:
         with:
           name: junit-py${{ matrix.python }}
           path: test-results/pytest-${{ matrix.python }}.xml
+          if-no-files-found: error
+          retention-days: 14
+
+  node-runtime:
+    if: needs.changes.outputs.product_changed == 'true'
+    needs: changes
+    name: node bridge (${{ matrix.node }})
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        node: ['18', 'latest']
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
+        with:
+          python-version: '3.12'
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: ${{ matrix.node }}
+      - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
+        with:
+          version: "latest"
+      - name: Sync locked development environment
+        shell: bash
+        run: |
+          uv sync --locked --python "$(python -c 'import sys; print(sys.executable)')"
+          python -c "import os; from pathlib import Path; print(Path('.venv').resolve() / ('Scripts' if os.name == 'nt' else 'bin'))" >> "$GITHUB_PATH"
+      - run: python -m pytest -q -ra --tb=short tests/test_node_bridge.py --junitxml=test-results/node-${{ matrix.node }}.xml
+      - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        if: always()
+        with:
+          name: junit-node-${{ matrix.node }}
+          path: test-results/node-${{ matrix.node }}.xml
           if-no-files-found: error
           retention-days: 14
 
@@ -149,6 +186,9 @@ jobs:
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
         with:
           python-version: '3.12'
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version: 'latest'
       - uses: astral-sh/setup-uv@1c37ad07a6a961277cf70c0d37d6f313000f5884 # v10.3.0
         with:
           version: "latest"
@@ -158,7 +198,7 @@ jobs:
           uv sync --locked --python "$(python -c 'import sys; print(sys.executable)')"
           python -c "import os; from pathlib import Path; print(Path('.venv').resolve() / ('Scripts' if os.name == 'nt' else 'bin'))" >> "$GITHUB_PATH"
       - run: python -S -c "import cli_args; assert cli_args.__all__"
-      - run: python -m pytest -q -ra --tb=short tests/test_cli_args.py tests/test_stdlib_commands.py tests/test_stdlib_functions.py tests/test_orchestration.py tests/test_observation_surface.py tests/test_option_suggestions.py --junitxml=test-results/core-${{ matrix.os }}.xml
+      - run: python -m pytest -q -ra --tb=short tests/test_cli_args.py tests/test_stdlib_commands.py tests/test_stdlib_functions.py tests/test_orchestration.py tests/test_observation_surface.py tests/test_option_suggestions.py tests/test_node_bridge.py --junitxml=test-results/core-${{ matrix.os }}.xml
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -215,7 +255,7 @@ jobs:
       output-artifact: negative-failure-identity
 
   failure-identity:
-    needs: [changes, test, docker-integration, portability]
+    needs: [changes, test, node-runtime, docker-integration, portability]
     if: (always()) && needs.changes.outputs.product_changed == 'true'
     permissions:
       contents: read
@@ -223,7 +263,7 @@ jobs:
     uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-junit-identity.yml@2192ff22acafdd09e80ac722df91ee937aaedd5e
     with:
       commit-sha: ${{ github.event.pull_request.head.sha || github.sha }}
-      expected-reports: '["junit-py3.11/pytest-3.11.xml","junit-py3.12/pytest-3.12.xml","junit-py3.14/pytest-3.14.xml","junit-docker-integration/docker-integration.xml","junit-container-real/container-real.xml","junit-core-windows/core-windows.xml","junit-core-macos/core-macos.xml"]'
+      expected-reports: '["junit-py3.11/pytest-3.11.xml","junit-py3.12/pytest-3.12.xml","junit-py3.14/pytest-3.14.xml","junit-node-18/node-18.xml","junit-node-latest/node-latest.xml","junit-docker-integration/docker-integration.xml","junit-container-real/container-real.xml","junit-core-windows/core-windows.xml","junit-core-macos/core-macos.xml"]'
       artifact-pattern: "junit-*"
       output-artifact: failure-identity
 

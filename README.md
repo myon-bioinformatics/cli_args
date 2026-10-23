@@ -49,6 +49,21 @@ write_output(result, format="json")
 
 `pytest_command(paths, quiet=True, tb="short", summary=True, extra=[...])` は `python -m pytest -q --tb short -ra ...` を構築する任意のプリセットです。`paths` と `extra` も順序を持つ有限の `Sequence` 専用で、単一の `str` / `PathLike`、set/dict、generator は拒否します。pytestを本体からimportせず、自動インストールもしません。
 
+## Node.js を argv から実行する
+
+`node_command(target, *args, node=None, node_flags=())` は `[node, *node_flags, target, *args]` を構築します。`run_node(...)` は `run_command()` の薄いラッパで、`timeout` / `max_output_bytes` / `env` / `dry_run` など既存の実行契約をそのまま使えます。`is_node_target(path)` は `.js` / `.cjs` / `.mjs` を判定します。
+
+Node の探索順は次のとおりです。`node=` 引数、`--node`、`CLI_ARGS_NODE` は**明示指定**で、失敗時にフォールバックしません。その後 `NODE` 環境変数、`shutil.which('node')` を試します。Windows の `.cmd` / `.bat` ラッパは拒否し、見つかった実行ファイルは `node --version` を 5 秒以内に一度だけ確認し、Node 18 以上であることを要求します。見つからない・古い・タイムアウトは `NodeNotFoundError`（`FileNotFoundError` のサブクラス、メッセージは `cli_args: node …`）です。子プロセスの終了コードは `returncode` にそのまま載ります。`shell=True` は使いません。
+
+CLI から opt-in する場合は `add_node_arguments(parser)` で `--node PATH` と繰り返し `--node-flag`（値が `-` で始まるときは `--node-flag=--import=x` の形）を追加し、実行 argv を組み立てる直前で `node_or_command(argv, node=args.node, node_flags=args.node_flags)` を呼びます。`.js` / `.cjs` / `.mjs` が先頭トークンのときだけ Node で包み、それ以外は `Command(argv)` をそのまま返します。既存の argv 意味は、このヘルパを使わない限り変わりません。
+
+```python
+from cli_args import node_command, run_node, node_or_command
+
+result = run_node("tools/probe.cjs", "--", "-flag", "", "日本 語", timeout=30)
+command = node_or_command(["playwright.cjs", "test", "--list"], node_flags=["--no-warnings"])
+```
+
 ## stdin入力を明示的に渡す（他repo横断で回収）
 
 `run_command(command, stdin=...)` は任意の **str（UTF-8へ符号化）またはbytes（無変換）** を一度だけ子プロセスに渡します。末尾の改行は追加しません。shellは使いません。`None` は入力指定なしです。
@@ -185,7 +200,7 @@ PR #1（マージ済み）では、探索中の失敗を単なるノイズとし
 | journal/systemd backing service | **未測定** | default CI imageはsystemd PID 1/journal serviceを起動しないため System-service-real を主張しない |
 | Docker | Host-real → Container-real | hostの `cli_args.Command` からlocal build済みimageへ `--`・空文字・leading hyphen・space・Unicode argvをexact transport |
 | Docker Compose | Host-real | local build済みimageだけを参照し、repeated `-f` + `config --services` を実行。registry/networkは不要 |
-| Node / npm | Host-real | temp package + local JS probeで `npm run ... -- <args>` のspace/Unicode/leading-hyphen/attached-option transportを実測 |
+| Node / npm | Host-real | `node_command` / `run_node` / `node_or_command` の argv 構築・探索・version probe（Node 18+、明示指定の失敗、`.cmd` 拒否）と `.cjs` / `.mjs` 実実行（`--`、空文字、leading hyphen、Unicode path、timeout・exit code）。CI は Node 18 と latest の専用 lane。temp package + local JS probeで `npm run ... -- <args>` の transport も実測 |
 | Playwright CLI shape | Construct-only | orgで実際に使うdirect Node CLI形を固定し、greedyな `--project value` を避け `--project=value` + `--grep` + spec順序を検証。real browser/parser証拠はbrowser-test-kit側 |
 | gh | Host-real binary + Construct-only/stub | `gh --version` は実binary。API subcommand、repeated header、`--jq`、`--paginate --slurp`、`--cache 1h`、typed `-F` / raw `-f` fieldのexact argvを固定。live auth/networkは未測定 |
 | Flutter / Dart | Construct-only | `flutter build web -t ... --dart-define=...`、`dart run ... --output ...` の代表argvを固定。bootstrap/build実測はFlutter repo側 |
@@ -198,7 +213,7 @@ Host Python matrixは速いcore contractに限定し、Docker/systemd stateへ�
 
 Git/curl/ls等がhost環境に無い場合、host-real testcaseは理由付きskipになります。ただしDocker integration laneでは必要binaryをimageに明示的に入れるため、そのlaneではskipを許容しません。外部web siteやlive認証は不要です。
 
-Ubuntu CIではPython 3.11 / 3.12 / 3.14のJUnitに加えてDocker integration JUnitを別artifactとして保存します。さらにWindows/macOSではPython 3.12でstdlib/core contract (`tests/test_cli_args.py`) を実行し、OS固有のsubprocess/path/newline差を軽量に検証します。host Python 3件、Docker transport/Compose 1件、container-real CLI 1件、Windows/macOS core 2件の**全7 report**をshared exact-report collectorへ渡します。**argvを構築できること、stubへ渡せること、real CLIが動いたこと、live/service integrationまで測ったことは別契約です。** Windows/macOSのcore Python contractは実測します。live認証付きgh、real Playwright browser/parser、Flutter/Dart bootstrap/build、xprobe、systemd-backed journal serviceはこの初期版では未検証です。
+Ubuntu CIではPython 3.11 / 3.12 / 3.14のJUnitに加えて、Node bridge（Node 18 / latest）と Docker integration JUnitを別artifactとして保存します。さらにWindows/macOSではPython 3.12でstdlib/core contract と `tests/test_node_bridge.py` を実行し、OS固有のsubprocess/path/newline差を軽量に検証します。host Python 3件、Node 2件、Docker transport/Compose 1件、container-real CLI 1件、Windows/macOS core 2件の**全9 report**をshared exact-report collectorへ渡します。**argvを構築できること、stubへ渡せること、real CLIが動いたこと、live/service integrationまで測ったことは別契約です。** Windows/macOSのcore Python contractは実測します。live認証付きgh、real Playwright browser/parser、Flutter/Dart bootstrap/build、xprobe、systemd-backed journal serviceはこの初期版では未検証です。
 
 ```bash
 python -m pip install -r tests/requirements.txt

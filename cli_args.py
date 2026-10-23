@@ -13,6 +13,7 @@ import json
 import math
 import os
 import re
+import shutil
 from pathlib import Path
 import subprocess
 import sys
@@ -22,10 +23,11 @@ from typing import Any, Iterable, Mapping, Sequence, TextIO
 
 __all__ = [
     "Argument", "make_parser", "parse_args", "add_output_arguments",
-    "add_execution_arguments", "require_when", "positive_seconds",
-    "Command", "CommandResult", "run_command", "render_output",
-    "write_output", "pytest_command", "trim_output", "pytest_summary",
-    "build_env",
+    "add_execution_arguments", "add_node_arguments", "require_when",
+    "positive_seconds", "Command", "CommandResult", "run_command",
+    "render_output", "write_output", "pytest_command", "trim_output",
+    "pytest_summary", "build_env", "NodeNotFoundError", "is_node_target",
+    "resolve_node", "node_command", "run_node", "node_or_command",
 ]
 
 
@@ -122,6 +124,12 @@ def add_execution_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--dry-run", action="store_true", help="describe argv without executing")
     parser.add_argument("--timeout", type=positive_seconds, default=None, metavar="SECONDS")
     parser.add_argument("--cwd", type=Path)
+
+
+def add_node_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--node", metavar="PATH", help="Node.js executable path")
+    parser.add_argument("--node-flag", action="append", default=[], dest="node_flags",
+                        metavar="FLAG", help="repeatable flag before the script target")
 
 
 def require_when(parser: argparse.ArgumentParser, args: argparse.Namespace, *,
@@ -363,6 +371,116 @@ def write_output(value: Any, *, format: str = "text",
                 staged = Path(work) / "complete.txt"
                 staged.write_text(text, encoding="utf-8", newline="\n")
                 os.link(staged, destination)
+
+
+class NodeNotFoundError(FileNotFoundError):
+    """Raised when Node.js cannot be located or does not meet the minimum version."""
+
+
+_NODE_PROBE_CACHE: dict[str, str] = {}
+_NODE_MIN_MAJOR = 18
+_NODE_VERSION = re.compile(r"(?:^|\s)v?(?P<major>\d+)(?:\.\d+)*", re.IGNORECASE)
+
+
+def is_node_target(path: str | os.PathLike[str]) -> bool:
+    """True when ``path`` names a JavaScript entry file by extension."""
+    return Path(os.fspath(path)).suffix.lower() in (".js", ".cjs", ".mjs")
+
+
+def _reject_windows_batch_wrapper(path: str) -> None:
+    lowered = path.lower()
+    if lowered.endswith(".cmd") or lowered.endswith(".bat"):
+        raise NodeNotFoundError("cli_args: node batch wrappers (.cmd/.bat) are not supported: "
+                                + path)
+
+
+def _probe_node_once(path: str) -> str:
+    cached = _NODE_PROBE_CACHE.get(path)
+    if cached is not None:
+        return cached
+    _reject_windows_batch_wrapper(path)
+    try:
+        completed = subprocess.run(
+            (path, "--version"), capture_output=True, timeout=5, shell=False, check=False,
+        )
+    except FileNotFoundError as exc:
+        raise NodeNotFoundError("cli_args: node executable not found: " + path) from exc
+    except OSError as exc:
+        raise NodeNotFoundError("cli_args: node version probe failed: " + path) from exc
+    except subprocess.TimeoutExpired as exc:
+        raise NodeNotFoundError("cli_args: node version probe timed out: " + path) from exc
+    output = _decode(completed.stdout) + _decode(completed.stderr)
+    match = _NODE_VERSION.search(output)
+    if completed.returncode != 0 or match is None:
+        raise NodeNotFoundError("cli_args: node version probe failed: " + path)
+    major = int(match.group("major"))
+    if major < _NODE_MIN_MAJOR:
+        raise NodeNotFoundError(
+            f"cli_args: node version must be {_NODE_MIN_MAJOR} or newer (found {major}): " + path)
+    _NODE_PROBE_CACHE[path] = path
+    return path
+
+
+def resolve_node(node: str | os.PathLike[str] | None = None) -> str:
+    """Locate a Node 18+ executable.
+
+    Explicit ``node``, ``CLI_ARGS_NODE``, or a caller-supplied ``--node`` value must
+    work as given; auto-discovery tries ``NODE`` then ``shutil.which('node')``.
+    """
+    explicit = node is not None
+    if not explicit and "CLI_ARGS_NODE" in os.environ:
+        node = os.environ["CLI_ARGS_NODE"]
+        explicit = True
+    if explicit:
+        path = _token(node)
+        return _probe_node_once(path)
+
+    candidates: list[str] = []
+    env_node = os.environ.get("NODE")
+    if env_node:
+        candidates.append(_token(env_node))
+    discovered = shutil.which("node")
+    if discovered:
+        candidates.append(discovered)
+    seen: set[str] = set()
+    for candidate in candidates:
+        if candidate in seen:
+            continue
+        seen.add(candidate)
+        try:
+            return _probe_node_once(candidate)
+        except NodeNotFoundError:
+            continue
+    raise NodeNotFoundError("cli_args: node executable not found")
+
+
+def node_command(target: str | os.PathLike[str], *args: str | os.PathLike[str],
+                 node: str | os.PathLike[str] | None = None,
+                 node_flags: Sequence[str | os.PathLike[str]] = ()) -> Command:
+    """Build ``[node, *node_flags, target, *args]`` without reinterpreting passthrough argv."""
+    executable = resolve_node(node)
+    flags = _tokens(node_flags)
+    script = _token(target)
+    trailing = tuple(_token(value) for value in args)
+    return Command((executable, *flags, script, *trailing))
+
+
+def run_node(target: str | os.PathLike[str], *args: str | os.PathLike[str],
+             node: str | os.PathLike[str] | None = None,
+             node_flags: Sequence[str | os.PathLike[str]] = (),
+             **run_command_kwargs: Any) -> CommandResult:
+    return run_command(node_command(target, *args, node=node, node_flags=node_flags),
+                       **run_command_kwargs)
+
+
+def node_or_command(argv: Sequence[str | os.PathLike[str]], *,
+                    node: str | os.PathLike[str] | None = None,
+                    node_flags: Sequence[str | os.PathLike[str]] = ()) -> Command:
+    """Wrap ``argv[0]`` with Node when it names a ``.js`` / ``.cjs`` / ``.mjs`` file."""
+    tokens = _tokens(argv)
+    if is_node_target(tokens[0]):
+        return node_command(tokens[0], *tokens[1:], node=node, node_flags=node_flags)
+    return Command(tokens)
 
 
 def pytest_command(paths: Sequence[str] = (), *, quiet: bool = False,
