@@ -8,11 +8,11 @@
 
 A single-file, standard-library-only Python toolkit for reusable CLI argument definitions, validation, command construction, execution, and JSON/text output, backed by practical CLI tests.
 
-Python 3.10+。`cli_args.py` をコピーして取り込めます。本体は標準ライブラリだけで動き、import時に引数解析・コマンド実行をしません。pipパッケージ化は初期版の対象外です。
+Python 3.10+. Vendor it by copying `cli_args.py`. The module runs on the standard library alone and does no argument parsing or command execution at import time. Packaging for pip is out of scope for the initial version.
 
-## 引数定義を再利用する
+## Reusing argument definitions
 
-`argparse` の `choices` / `required` / `nargs` / `action` / `type` をそのまま利用します。既定ではオプション名の省略を禁止します。
+`argparse`'s `choices` / `required` / `nargs` / `action` / `type` are used as-is. Abbreviated option names are rejected by default.
 
 ```python
 import argparse
@@ -25,11 +25,11 @@ args = parse_args([
 ], ["--mode", "read", "--no-enabled", "a.html", "b.html"])
 ```
 
-細かい設定には `make_parser()` の戻り値へ直接 `add_argument()` や `add_mutually_exclusive_group()` を使えます。`Argument.names`、明示指定する `parse_args(..., argv=...)`、`require_when(..., required=...)` はいずれも順序を持つ有限の sequence を契約とし、単一文字列や set/dict/generator の暗黙展開を拒否します。`require_when(parser, args, when=..., required=["output"])` は条件が成立したとき、値が `None` の項目を `parser.error()` で拒否します。`False` や `0` は指定値として扱います。
+For finer control, call `add_argument()` or `add_mutually_exclusive_group()` directly on the parser returned by `make_parser()`. `Argument.names`, an explicit `parse_args(..., argv=...)`, and `require_when(..., required=...)` all take an ordered, finite sequence; a single string or implicit expansion of a set/dict/generator is rejected. `require_when(parser, args, when=..., required=["output"])` rejects, via `parser.error()`, any listed item whose value is `None` when the condition holds. `False` and `0` count as given values.
 
-`add_output_arguments(parser)` は `--format text/json` と `--output`、`add_execution_arguments(parser)` は `--dry-run` / `--timeout` / `--cwd` を追加します。必要なセットだけ選び、呼び出し側で名前の衝突を避けてください。
+`add_output_arguments(parser)` adds `--format text/json` and `--output`; `add_execution_arguments(parser)` adds `--dry-run` / `--timeout` / `--cwd`. Pick only the sets you need and avoid name clashes on the caller side.
 
-## コマンドを組み立てる
+## Building commands
 
 ```python
 from cli_args import Command, run_command, write_output
@@ -42,27 +42,27 @@ result = run_command(command, timeout=10)
 write_output(result, format="json")
 ```
 
-| メソッド | 動作 |
+| Method | Behavior |
 |---|---|
-| `flag(name, enabled)` | boolがTrueのときだけ追加 |
-| `option(name, value)` | 名前と値を追加。Noneは省略、空文字は保持 |
-| `option(..., attached=True)` | `--name=value` を追加。実行先が対応する場合に使用 |
-| `repeated(name, values)` | `-H value1 -H value2` のように繰り返す。`values` は複数トークンの collection 専用 |
-| `multiple(name, values)` | `--files a b` のように並べる。`values` は複数トークンの collection 専用 |
-| `positional(*values)` | 指定順に位置引数を追加 |
-| `passthrough(values, separator=False)` | argv をそのまま追加。`separator=True` のときだけ先頭に `--` を追加。`values` は複数トークンの collection 専用 |
+| `flag(name, enabled)` | Added only when the bool is True |
+| `option(name, value)` | Adds the name and value. None is omitted; an empty string is kept |
+| `option(..., attached=True)` | Adds `--name=value`. Use when the target supports it |
+| `repeated(name, values)` | Repeats, as in `-H value1 -H value2`. `values` must be a multi-token collection |
+| `multiple(name, values)` | Lists values, as in `--files a b`. `values` must be a multi-token collection |
+| `positional(*values)` | Adds positional arguments in the given order |
+| `passthrough(values, separator=False)` | Appends argv as-is. Prepends `--` only when `separator=True`. `values` must be a multi-token collection |
 
-コマンドごとの意味や有効な組み合わせは呼び出し側で定義します。引数は文字列またはテキストパスで渡し、数値は明示的に文字列化します。シェル展開・引用符の解釈・文字列の分割は行いません。`repeated()` / `multiple()` / `passthrough()` の collection 引数は、順序を持つ有限の `Sequence`（list/tuple等）専用です。単一の `str` / `PathLike` に加え、順序が不定な set/dict や一度きりの generator も `TypeError` で拒否します。argvの順序・再現性をAPI契約にするためです。1トークンだけ追加したい場合は `option()` / `positional()` を使います。
+The meaning of each command and its valid combinations are defined by the caller. Pass arguments as strings or text paths, and convert numbers to strings explicitly. No shell expansion, quote interpretation, or string splitting is done. The collection arguments of `repeated()` / `multiple()` / `passthrough()` accept only ordered, finite `Sequence`s (list/tuple, etc.). A single `str` / `PathLike`, an unordered set/dict, or a one-shot generator is rejected with `TypeError`, so that argv order and reproducibility are part of the API contract. To add a single token, use `option()` / `positional()`.
 
-`pytest_command(paths, quiet=True, tb="short", summary=True, extra=[...])` は `python -m pytest -q --tb short -ra ...` を構築する任意のプリセットです。`paths` と `extra` も順序を持つ有限の `Sequence` 専用で、単一の `str` / `PathLike`、set/dict、generator は拒否します。pytestを本体からimportせず、自動インストールもしません。このリポジトリ自身のテストは `uv run --locked pytest` で実行します。`pytest_command` は呼び出し先の pytest CLI を組むだけで、uv は呼びません。
+`pytest_command(paths, quiet=True, tb="short", summary=True, extra=[...])` is an optional preset that builds `python -m pytest -q --tb short -ra ...`. `paths` and `extra` also accept only ordered, finite `Sequence`s; a single `str` / `PathLike`, set/dict, or generator is rejected. pytest is not imported by the module and is never auto-installed. This repository's own tests run with `uv run --locked pytest`. `pytest_command` only builds the target pytest CLI; it does not call uv.
 
-## Node.js を argv から実行する
+## Running Node.js from argv
 
-`node_command(target, *args, node=None, node_flags=())` は `[node, *node_flags, target, *args]` を構築します。`run_node(...)` は `run_command()` の薄いラッパで、`timeout` / `max_output_bytes` / `env` / `dry_run` など既存の実行契約をそのまま使えます。`dry_run` は bool 以外を `TypeError` で拒否します。文字列を偽として実行することはありません。`dry_run=True` のときは `node --version` の probe も子プロセス起動も行わず、探索順に沿った argv[0] トークン（最後は字面 `node`）だけを組み立てます。`is_node_target(path)` は `.js` / `.cjs` / `.mjs` を判定します。`node_or_command([])` は `Command(())` と同様に `ValueError` です。
+`node_command(target, *args, node=None, node_flags=())` builds `[node, *node_flags, target, *args]`. `run_node(...)` is a thin wrapper over `run_command()` and keeps the existing execution contract (`timeout` / `max_output_bytes` / `env` / `dry_run`, etc.). `dry_run` rejects non-bool values with `TypeError`; a string is never treated as false and executed. With `dry_run=True`, neither the `node --version` probe nor a child process runs; only the argv[0] token following the lookup order is built (the last fallback is the literal `node`). `is_node_target(path)` checks for `.js` / `.cjs` / `.mjs`. `node_or_command([])` raises `ValueError`, as `Command(())` does.
 
-Node の探索順は次のとおりです。`node=` 引数、`--node`、`CLI_ARGS_NODE` は**明示指定**で、失敗時にフォールバックしません。その後 `NODE` 環境変数、`shutil.which('node')` を試します。Windows の `.cmd` / `.bat` ラッパは拒否し、見つかった実行ファイルは `node --version` を 5 秒以内に一度だけ確認し、Node 24 以上であることを要求します（`dry_run` 時は probe を省略）。見つからない・古い・タイムアウトは `NodeNotFoundError`（`FileNotFoundError` のサブクラス、メッセージは `cli_args: node …`）です。子プロセスの終了コードは `returncode` にそのまま載ります。`shell=True` は使いません。`package.json` の `engines.node` も **>=24** です。
+Node lookup order: the `node=` argument, `--node`, and `CLI_ARGS_NODE` are **explicit** and do not fall back on failure. After those, the `NODE` environment variable and `shutil.which('node')` are tried. Windows `.cmd` / `.bat` wrappers are rejected; the executable found is checked once with `node --version` within 5 seconds and must be Node 24 or later (the probe is skipped under `dry_run`). Not found, too old, or timed out raises `NodeNotFoundError` (a `FileNotFoundError` subclass, message `cli_args: node …`). The child's exit code is passed through in `returncode`. `shell=True` is never used. `engines.node` in `package.json` is also **>=24**.
 
-CLI から opt-in する場合は `add_node_arguments(parser)` で `--node PATH` と繰り返し `--node-flag`（値が `-` で始まるときは `--node-flag=--import=x` の形）を追加し、実行 argv を組み立てる直前で `node_or_command(argv, node=args.node, node_flags=args.node_flags)` を呼びます。`.js` / `.cjs` / `.mjs` が先頭トークンのときだけ Node で包み、それ以外は `Command(argv)` をそのまま返します。既存の argv 意味は、このヘルパを使わない限り変わりません。
+To opt in from a CLI, `add_node_arguments(parser)` adds `--node PATH` and a repeatable `--node-flag` (use the `--node-flag=--import=x` form when the value starts with `-`); call `node_or_command(argv, node=args.node, node_flags=args.node_flags)` right before building the argv to run. It wraps the argv with Node only when the first token is `.js` / `.cjs` / `.mjs`, and otherwise returns `Command(argv)` unchanged. Existing argv semantics are unchanged unless you use this helper.
 
 ```python
 from cli_args import node_command, run_node, node_or_command
@@ -71,15 +71,15 @@ result = run_node("tools/probe.cjs", "--", "-flag", "", "日本 語", timeout=30
 command = node_or_command(["playwright.cjs", "test", "--list"], node_flags=["--no-warnings"])
 ```
 
-## Node.js から `cli_args.py` を呼ぶ
+## Calling `cli_args.py` from Node.js
 
-Python 側の `run_command` / `render_output` を Node 24+ から使うときは、リポジトリ直下の `cli_args.cjs` を require します。`cli_args.cjs` は呼び出し時に Node 24 未満を拒否します。実装は親リポジトリ `myon-bioinformatics` の共有ランチャー `vendor/py_launch.cjs` 経由で `cli_args.py run` / `render` を起動するだけで、Node から Node を起動しません。`shell: true` は使いません。stdin 上限は `py_launch` の `maxInputBytes`（`CLI_STDIN_MAX_BYTES`、4 MiB）、応答キャプチャは `responseMaxBytes`（96 MiB、`maxBuffer` は共有マージン 512 バイトのみ）です。
+To use the Python-side `run_command` / `render_output` from Node 24+, require `cli_args.cjs` at the repository root. `cli_args.cjs` rejects Node older than 24 at call time. It only launches `cli_args.py run` / `render` through the parent repository `myon-bioinformatics`'s shared launcher `vendor/py_launch.cjs`; it never launches Node from Node. `shell: true` is not used. The stdin limit is `py_launch`'s `maxInputBytes` (`CLI_STDIN_MAX_BYTES`, 4 MiB), and response capture is `responseMaxBytes` (96 MiB; `maxBuffer` adds only the shared 512-byte margin).
 
-| 探索 | 意味 |
+| Lookup | Meaning |
 |---|---|
-| `opts.python` / `runCommand(..., { python })` | 明示指定（失敗時フォールバックなし） |
-| `CLI_ARGS_PYTHON` | 明示の環境変数（`py_launch` の `envVar`） |
-| `PYTHON` → `python3` → `python`（Windows は `py -3`） | 自動探索 |
+| `opts.python` / `runCommand(..., { python })` | Explicit (no fallback on failure) |
+| `CLI_ARGS_PYTHON` | Explicit environment variable (`py_launch`'s `envVar`) |
+| `PYTHON` → `python3` → `python` (`py -3` on Windows) | Automatic lookup |
 
 ```javascript
 const {runCommand, render} = require("./cli_args.cjs");
@@ -90,21 +90,21 @@ console.log(result.returncode, result.stdout, result.stdout_b64);
 const text = render({title: "日本語"}, "json");
 ```
 
-CLI として直接実行する場合は `node cli_args.cjs run`（stdin に JSON）や `node cli_args.cjs render --format json`（stdin に値）と同じ契約です。不正な JSON や未知フィールドは Python が exit 2 で返し、ライブラリ API では `CliArgsRequestError` になります。インタプリタ起動失敗は `cli_args Python process failed: …` です。
+Running it directly as a CLI has the same contract as `node cli_args.cjs run` (JSON on stdin) or `node cli_args.cjs render --format json` (value on stdin). Invalid JSON or unknown fields make Python exit 2, which surfaces as `CliArgsRequestError` in the library API. An interpreter launch failure is `cli_args Python process failed: …`.
 
-**挙動変更（#27）:** Node の `runCommand` で `opts.max_output` を省略すると、Python へ **常に** `max_output: CLI_RUN_DEFAULT_MAX_OUTPUT_BYTES`（4 MiB）が送られます。以前の Node ラッパーは非制限に近い動きでしたが、橋渡しでは子の stdout/stderr 合計を 4 MiB で切ります。より大きい出力は `opts.max_output`（最大 `CLI_RUN_MAX_OUTPUT_BYTES`、8 MiB）を明示してください。直接 `python -S cli_args.py run` は従来どおり `max_output` 省略で非制限です。
+**Behavior change (#27):** if Node's `runCommand` omits `opts.max_output`, Python is **always** sent `max_output: CLI_RUN_DEFAULT_MAX_OUTPUT_BYTES` (4 MiB). The earlier Node wrapper was close to unlimited, but the bridge cuts the child's combined stdout/stderr at 4 MiB. For larger output, set `opts.max_output` explicitly (up to `CLI_RUN_MAX_OUTPUT_BYTES`, 8 MiB). Calling `python -S cli_args.py run` directly is still unlimited when `max_output` is omitted.
 
-Node は `response_max_bytes: CLI_RUN_RESPONSE_MAX_BYTES`（96 MiB）を `run` リクエストに付け、Python が **実際にシリアライズした JSON の UTF-8 長**をその上限と照合してから stdout に書きます。超過時は終了 **1**（stderr に `response exceeds response_max_bytes`）。Node 側の spawn バッファは `py_launch` の `responseMaxBytes`（内部で `CLI_HOST_RESPONSE_MARGIN_BYTES` を加算）のみで、JSON サイズの推定式は使いません。`render` も `--response-max-bytes CLI_RENDER_RESPONSE_MAX_BYTES` と同じ照合です。`run` の JSON には `output_limited` を常に含めます（`false` も省略しません）。
+Node adds `response_max_bytes: CLI_RUN_RESPONSE_MAX_BYTES` (96 MiB) to `run` requests, and Python checks **the UTF-8 length of the JSON it actually serialized** against that limit before writing to stdout. Exceeding it exits **1** (`response exceeds response_max_bytes` on stderr). The Node-side spawn buffer is only `py_launch`'s `responseMaxBytes` (with `CLI_HOST_RESPONSE_MARGIN_BYTES` added internally); no JSON size estimate is used. `render` performs the same check with `--response-max-bytes CLI_RENDER_RESPONSE_MAX_BYTES`. `run` JSON always includes `output_limited` (`false` is not omitted).
 
-## stdin入力を明示的に渡す（他repo横断で回収）
+## Passing stdin explicitly (collected from cross-repo use)
 
-`run_command(command, stdin=...)` は任意の **str（UTF-8へ符号化）またはbytes（無変換）** を一度だけ子プロセスに渡します。末尾の改行は追加しません。shellは使いません。`None` は入力指定なしです。
+`run_command(command, stdin=...)` passes any **str (encoded to UTF-8) or bytes (unchanged)** to the child process once. No trailing newline is added and no shell is used. `None` means no input.
 
 ```python
 from cli_args import Command, run_command
 import sys
 
-# Flutter等のJSON stdinワーカー。生成したJSON文字列をそのまま渡す。
+# JSON stdin worker such as Flutter's. Pass the generated JSON string as-is.
 result = run_command(
     Command((sys.executable, "-S", "worker.py")),
     stdin='{"operation":"inspect","values":["日本語"]}',
@@ -112,20 +112,20 @@ result = run_command(
 )
 assert result.returncode == 0
 
-# GitのNUL-safe pathspec。空白や先頭 - のある名前を正確に送る。
+# Git NUL-safe pathspec. Sends names with spaces or a leading - exactly.
 git = Command(("git", "add", "--pathspec-from-file=-", "--pathspec-file-nul"))
 result = run_command(git, stdin=b"-leading name.txt\0", timeout=10)
 ```
 
-`run_command()` は同期・有限入力のみを扱い、stdinにファイルオブジェクトやiteratorは受け付けません。streaming/bidirectional batch protocolや長時間常駐プロセスには対応しません。dry-run時は型・UTF-8符号化を検証しますが、入力の中身を出力して秘密情報を漏らすことはしません。stdout/stderrの既存UTF-8 replacement policyとexit/timeout契約は変更しません。
+`run_command()` handles only synchronous, finite input; file objects and iterators are not accepted as stdin. Streaming/bidirectional batch protocols and long-running resident processes are not supported. Dry-run validates type and UTF-8 encoding but never prints the input, so secrets are not leaked. The existing UTF-8 replacement policy for stdout/stderr and the exit/timeout contract are unchanged.
 
-横断調査の実例：`flutter_navigation_basic` の標準入力JSON、`browser-test-kit` のstdinベースの子プロセステスト、`gh_identity` 等の外部CLIラッパー。引数解析・固有ドメインルール自体は各プロジェクトに残します。GitのNUL pathspecおよび有限の `git cat-file --batch-command --buffer -Z` 呼出しは **実Git検証済み** です。ただし対話的・長時間常駐する双方向セッションは未対応です。
+Cross-repo examples: `flutter_navigation_basic`'s stdin JSON, `browser-test-kit`'s stdin-based child-process tests, and external CLI wrappers such as `gh_identity`. Argument parsing and domain-specific rules stay in each project. Git NUL pathspecs and finite `git cat-file --batch-command --buffer -Z` calls are **verified against real Git**. Interactive, long-running bidirectional sessions are not supported.
 
-## 出力保護とバイト上限
+## Output protection and byte limits
 
-`write_output(..., overwrite=False)` は**既存のパスを上書きしない**ためのopt-inです。既存ファイル、シンボリックリンク、リンク切れシンボリックリンクに対して `FileExistsError` を返し、対象を削除しません。出力内容を事前にレンダリングし、出力先と同じディレクトリに一時保存してから排他的なハードリンクで公開します。既定 `overwrite=True` の従来動作は維持します。ハードリンク非対応のファイルシステムでは安全側に失敗します。新規パスの可視化は原子的ですが、クラッシュ耐久性・fsync・公開後の第三者変更防止・既存ディレクトリの自動作成は保証しません。
+`write_output(..., overwrite=False)` is an opt-in that **never overwrites an existing path**. For an existing file, symlink, or broken symlink it raises `FileExistsError` without deleting the target. The content is rendered first, saved to a temporary file in the destination directory, and then published with an exclusive hard link. The default `overwrite=True` keeps the previous behavior. On filesystems without hard-link support it fails safe. Making a new path visible is atomic, but crash durability, fsync, protection against third-party changes after publishing, and automatic creation of missing directories are not guaranteed.
 
-`run_command(..., max_output_bytes=N)` は stdout/stderr の**合計生バイト数**を上限として捕捉し、超過したら子プロセスを停止します。メモリ上に保存する出力は合計Nバイト以下で、`CommandResult.output_limited=True`、`returncode=None` により通常の成功と区別します。既定 `None` は以前の非制限モードです。省略時の既存JSON形式も維持します。超過時は表示がUTF-8文字の途中で切れる場合があり、decodeは既存どおり `errors="replace"` です。監視対象は起動した子プロセスのみで、子孫プロセス全体の停止は保証しません。
+`run_command(..., max_output_bytes=N)` caps capture at the **combined raw byte count** of stdout/stderr and stops the child process when exceeded. Output kept in memory totals at most N bytes, and `CommandResult.output_limited=True` with `returncode=None` distinguishes it from a normal success. The default `None` is the previous unlimited mode, and the existing JSON shape is kept when omitted. When the limit is hit, the display may be cut in the middle of a UTF-8 character; decoding stays `errors="replace"` as before. Only the launched child is monitored; stopping the whole descendant tree is not guaranteed.
 
 ```python
 result = run_command(Command(("git", "status")), max_output_bytes=65536, timeout=10)
@@ -134,13 +134,13 @@ if result.output_limited:
 write_output({"ok": True}, format="json", output="result.json", overwrite=False)
 ```
 
-`examples/run_cli.py` は `--max-output-bytes N`、`--no-overwrite`、`--stdin TEXT` / `--stdin-file PATH`（排他）、`--env KEY=VALUE`（複数指定可）を公開します。出力超過は **exit 125**、タイムアウトは従来どおり **124**、ファイル作成不可やstdinファイル読み込み不可は **1** です。入力はCLI側の`--`より前、外部コマンドargvは後ろです。
+`examples/run_cli.py` exposes `--max-output-bytes N`, `--no-overwrite`, `--stdin TEXT` / `--stdin-file PATH` (mutually exclusive), and `--env KEY=VALUE` (repeatable). Exceeding the output limit exits **125**, a timeout exits **124** as before, and failing to create the file or read the stdin file exits **1**. CLI options go before `--`; the external command argv goes after it.
 
-## 長い出力を読む側に渡す（省略の明示・pytestの決定行）
+## Handing long output to the reader (explicit omissions, pytest deciding lines)
 
-`trim_output(text, head=40, tail=40)` は先頭 `head` 行と末尾 `tail` 行を残し、間に `... N line(s) omitted ...` の1行を入れます。`head`/`tail` で切った出力は欠けていても完全に見えるため、読む側（人やエージェント）が欠落に気づけるよう省略を明示します。収まる出力はそのまま返します。
+`trim_output(text, head=40, tail=40)` keeps the first `head` lines and the last `tail` lines, with a single `... N line(s) omitted ...` line in between. Output cut with plain `head`/`tail` looks complete even when lines are missing, so the omission is made explicit for the reader (human or agent). Output that fits is returned unchanged.
 
-`pytest_summary(output)` は pytest の捕捉出力から結果を決める行だけを返します: 最終行 `N failed, M passed in Xs`（`summary`/`counts`）、`-ra` の `FAILED`/`ERROR` 行（`failed`/`errors`）、pytest-cov の `TOTAL` 行と `Required test coverage` の判定（`coverage`）、各失敗の最初の `E` 行や `INTERNALERROR` を含む `deciding_lines`（既定60行、超過は `truncated`）。
+`pytest_summary(output)` returns only the lines in captured pytest output that decide the result: the final `N failed, M passed in Xs` line (`summary`/`counts`), `-ra` `FAILED`/`ERROR` lines (`failed`/`errors`), pytest-cov's `TOTAL` line and the `Required test coverage` verdict (`coverage`), and `deciding_lines` with the first `E` line of each failure and any `INTERNALERROR` (60 lines by default; excess sets `truncated`).
 
 ```python
 result = run_command(pytest_command(["tests"], quiet=True, summary=True), timeout=600)
@@ -149,119 +149,119 @@ print(digest["summary"], digest["failed"], digest["coverage"]["required_met"])
 print(trim_output(result.stdout, head=20, tail=40))
 ```
 
-## 実行・出力
+## Execution and output
 
 ```bash
 python -S examples/run_cli.py --format json --dry-run -- git status --short
 python -S examples/run_cli.py --format json --output result.json --timeout 30 -- uv run --locked pytest -q --tb=short -ra
 ```
 
-`cli_args.py` 自体にも、Node 等のホストから `python -S cli_args.py` で呼べる機械向け入口があります（import 時は argv を解析しません）。
+`cli_args.py` itself also has a machine-facing entry point that hosts such as Node can call with `python -S cli_args.py` (argv is not parsed at import time).
 
-| サブコマンド | 入力 | 出力 |
+| Subcommand | Input | Output |
 |---|---|---|
-| `run` | stdin に JSON リクエスト | `CommandResult` を JSON で stdout |
-| `render --format text\|json` | stdin に任意の JSON 値 | `render_output` の結果を stdout |
+| `run` | JSON request on stdin | `CommandResult` as JSON on stdout |
+| `render --format text\|json` | Any JSON value on stdin | Result of `render_output` on stdout |
 
-`run` の JSON オブジェクトは `argv`（必須）に加え、任意で `timeout` / `cwd` / `env` / `input` / `max_output` / `dry_run` を受け取ります。stdin は UTF-8 で **4 MiB** まで（超過・非 UTF-8・`NaN`/`Infinity` を含む JSON は終了 **2**）。未知キー・型不一致・不正 JSON も終了 **2**（stderr 1行）。リクエストを処理できた場合は終了 **0** で、子プロセスの終了コードは JSON の `returncode` に入ります。実行ファイル不在や `cwd` 不存在などの**起動失敗**は **1** です。`shell` は受け付けません。
+The `run` JSON object takes `argv` (required) and optionally `timeout` / `cwd` / `env` / `input` / `max_output` / `dry_run`. stdin is UTF-8 up to **4 MiB** (exceeding it, non-UTF-8, or JSON containing `NaN`/`Infinity` exits **2**). Unknown keys, type mismatches, and invalid JSON also exit **2** (one line on stderr). When the request is processed it exits **0**, and the child's exit code goes into the JSON `returncode`. A **launch failure** such as a missing executable or missing `cwd` exits **1**. `shell` is not accepted.
 
-`run` の JSON には、ライブラリの `render_output` とは別に、捕捉した生バイト列の **Base64** フィールド `stdout_b64` / `stderr_b64` を常に付けます。`output_limited` は常に `true` / `false` で返します（CLI のみ。ライブラリの `render_output` JSON は従来どおり `false` のとき省略）。`stdout` / `stderr` は UTF-8 として解釈し、不正バイトは U+FFFD に置換したテキストです。バイナリや非 UTF-8 を欠損なく扱う場合は `*_b64` を使います。`--version` は `cli_args.py` 内の `__version__` 定数（vendor 単体コピーでも同じ値）を表示します。
+Separately from the library's `render_output`, `run` JSON always carries **Base64** fields `stdout_b64` / `stderr_b64` with the captured raw bytes. `output_limited` is always returned as `true` / `false` (CLI only; the library's `render_output` JSON still omits it when `false`). `stdout` / `stderr` are decoded as UTF-8 with invalid bytes replaced by U+FFFD. Use `*_b64` to handle binary or non-UTF-8 data without loss. `--version` prints the `__version__` constant in `cli_args.py` (the same value in a standalone vendored copy).
 
 ```bash
 printf '%s' '{"argv":["python","-c","print(1)"],"dry_run":true}' | python -S cli_args.py run
 printf '%s' '{"argv":["日本語"],"returncode":0,"stdout":"","stderr":"","executed":true}' | python -S cli_args.py render --format json
 ```
 
-ラッパー引数と実行先引数は必須の `--` で区切ります。実行先の `--format` などは境界の後ろに置けます。
+Wrapper arguments and target arguments are separated by a required `--`. Target options such as `--format` can go after the boundary.
 
-- 実行結果: `argv`, `returncode`, `stdout`, `stderr`, `executed`, `timed_out`。
-- 非ゼロ終了も結果として返します。起動失敗は `OSError`、タイムアウトは `timed_out=True` / `returncode=None` と途中出力を返します。
-- dry-runは実行せず、`executed=False` / `returncode=None` を返します。成功実行とは区別します。
-- JSONは実行結果の封筒です。Git・curl等のstdoutを自動で業務データに変換しません。
-- textの実行結果はstdoutそのままです。`run_command()` が捕捉したstdout/stderrはUTF-8 decodeのみ行い、子プロセスが出した改行 (`\n` / `\r\n`) は正規化しません。ライブラリ利用者はstderrと終了状態を確認してください。例のCLIはstderrも表示し、非ゼロ終了を伝え、タイムアウト124・実行ファイル不在127で終了します。`--output` の書込みに失敗した場合（親ディレクトリ不存在・権限不足等）は traceback を出さず `failed to write output: ...` をstderrへ出して終了1にします。
-- 保存はUTF-8・LF (`\n`) 固定・既存ファイル上書きです。Windowsを含め改行バイトをLFに固定します。親ディレクトリは作成しません。JSON変換に成功してから書き込みますが、原子的な保存ではありません。
-- 既定の非制限実行は出力をメモリに保持します。大量出力は `max_output_bytes` の明示指定で制限できます。バイナリのlossless出力、対話的stdin、ストリーミング、子孫プロセス全体の停止は対象外です。
-- `env` 指定は環境全体の置換です。継承する場合は呼び出し側で `os.environ` と合成するか、`build_env(extra, inherit=True)` ヘルパーを利用してください。`build_env()` は Mapping または `"KEY=VALUE"` 文字列の sequence を受け取り、環境変数を安全に合成します。
+- Result: `argv`, `returncode`, `stdout`, `stderr`, `executed`, `timed_out`.
+- A non-zero exit is returned as a result too. A launch failure raises `OSError`; a timeout returns `timed_out=True` / `returncode=None` with partial output.
+- Dry-run does not execute and returns `executed=False` / `returncode=None`, distinct from a successful run.
+- The JSON is an envelope for the execution result. Stdout from Git, curl, etc. is not turned into domain data automatically.
+- The text result is stdout as-is. Stdout/stderr captured by `run_command()` is only UTF-8 decoded; newlines emitted by the child (`\n` / `\r\n`) are not normalized. Library users should check stderr and the exit status. The example CLI also prints stderr, reports non-zero exits, and exits 124 on timeout and 127 when the executable is missing. If writing `--output` fails (missing parent directory, insufficient permissions, etc.), it prints `failed to write output: ...` to stderr without a traceback and exits 1.
+- Saving is UTF-8, always LF (`\n`), and overwrites existing files. Newline bytes are LF on every OS, including Windows. Parent directories are not created. The file is written only after JSON conversion succeeds, but the save is not atomic.
+- Unlimited execution (the default) keeps output in memory. Limit large output by setting `max_output_bytes` explicitly. Lossless binary output, interactive stdin, streaming, and stopping the whole descendant tree are out of scope.
+- `env` replaces the whole environment. To inherit, merge with `os.environ` on the caller side or use the `build_env(extra, inherit=True)` helper. `build_env()` takes a Mapping or a sequence of `"KEY=VALUE"` strings and merges environment variables safely.
 
-## 標準ライブラリを第3のCLI面として使う
+## The standard library as a third CLI surface
 
-外部CLIを追加する前に、Python標準ライブラリの `python -m` / `python -c` / 通常importで同じ目的を安全に満たせないか確認します。AI coding時の既定の判断順は **stdlib → 既存host CLI → Docker/追加依存** です。
+Before adding an external CLI, check whether Python's standard library (`python -m` / `python -c` / plain import) can meet the same goal safely. The default order of choice for AI coding is **stdlib → existing host CLI → Docker/extra dependencies**.
 
-代表例は `json.tool`、`zipfile`、`tarfile`、`http.server`、`platform`、`compileall`、`tempfile`。PR #1（マージ済み）では主要例を実際にCIで動かし、単なるcheat sheetにはしません。標準モジュールへ独自aliasを被せず、本来の `python -m module` 名を見せることでPython version/provenanceを曖昧にしません。
+Typical examples are `json.tool`, `zipfile`, `tarfile`, `http.server`, `platform`, `compileall`, and `tempfile`. PR #1 (merged) runs the main examples in CI so this is not just a cheat sheet. Standard modules get no custom aliases; showing the real `python -m module` name keeps the Python version and provenance unambiguous.
 
-詳細と「外部ツールを入れる前に確認する標準機能」は [docs/stdlib-command-surface.md](docs/stdlib-command-surface.md) を参照してください。
+For details and "standard features to check before installing an external tool", see [docs/stdlib-command-surface.md](docs/stdlib-command-surface.md).
 
-また、古典CLIから現代CLIまでの「地味だが自動化に強い引数」は [docs/cli-argument-patterns.md](docs/cli-argument-patterns.md) に整理します。公式ドキュメントへの導線、real/construct-only の証拠レベル、NUL-safe・fail-fast・machine-readable といった設計思想を同じ場所で追えるようにします。
+"Unglamorous but automation-friendly arguments" from classic to modern CLIs are collected in [docs/cli-argument-patterns.md](docs/cli-argument-patterns.md), with links to official docs, real/construct-only evidence levels, and design principles such as NUL-safe, fail-fast, and machine-readable in one place.
 
-## 標準ライブラリの関数・型を先に使う
+## Use standard library functions and types first
 
-`python -m` よりさらに下には、独自helperや小規模依存を作る前に使えるstdlibの関数・型があります。特に `print` / `pprint` / `textwrap` / `shlex` / `pathlib` / `tempfile` / `collections` / `itertools` / `functools` / `contextlib` / `difflib` / `csv` / `configparser` / `hashlib` / `urllib.parse` を「よく自作される小物」の候補として先に確認します。
+Below `python -m` there are stdlib functions and types to use before writing a custom helper or adding a small dependency. In particular, check `print` / `pprint` / `textwrap` / `shlex` / `pathlib` / `tempfile` / `collections` / `itertools` / `functools` / `contextlib` / `difflib` / `csv` / `configparser` / `hashlib` / `urllib.parse` first as candidates for "small things people often write themselves".
 
-独自aliasを増やすのではなく、本来のAPIをそのまま使います。wrapperを作るのは、bounds・encoding policy・domain validation・provenance・error taxonomyなど**追加の契約**がある場合だけです。
+Use the real API instead of adding custom aliases. Write a wrapper only when there is an **extra contract** such as bounds, encoding policy, domain validation, provenance, or an error taxonomy.
 
-詳細は [docs/stdlib-function-surface.md](docs/stdlib-function-surface.md) を参照してください。
+See [docs/stdlib-function-surface.md](docs/stdlib-function-surface.md) for details.
 
-## 標準Pythonで段階実行を組み立てる
+## Building staged execution in plain Python
 
-Shellでよく見る `VAR=... → command → echo $? → if → exit 0/1/2 → 次のcommand` のバケツリレーは、Pythonが使えるなら通常の `for` / `if` / 変数 / `CommandResult.returncode` / `os.environ` / `print` / `sys.exit` で構造化できます。
+The shell bucket brigade often seen as `VAR=... → command → echo $? → if → exit 0/1/2 → next command` can be structured, when Python is available, with ordinary `for` / `if` / variables / `CommandResult.returncode` / `os.environ` / `print` / `sys.exit`.
 
-`1番が失敗したら2〜4番を実行しない` のような制御は新しいworkflow DSLを作らず、構造化argvを普通のPython制御フローで順番に実行します。子プロセスが親の環境変数を書き換えることはできないため、step間の状態はPython値・stdoutからparseした値・一時ファイル・明示env mappingとして渡します。
+Control such as "if step 1 fails, do not run steps 2–4" needs no new workflow DSL; run structured argvs in order with normal Python control flow. A child process cannot change its parent's environment variables, so state between steps is passed as Python values, values parsed from stdout, temporary files, or an explicit env mapping.
 
-詳細と実例は [docs/stdlib-orchestration-surface.md](docs/stdlib-orchestration-surface.md) を参照してください。
+See [docs/stdlib-orchestration-surface.md](docs/stdlib-orchestration-surface.md) for details and examples.
 
-## 最小の観測経路から始める
+## Start with the smallest observation path
 
-read-onlyな情報取得では、最初から独自API/MCPを作らず **local/static data → raw HTTP document → generic local parser → official API → MCP** の順で、必要な契約を満たす最小の面を選びます。HTML全文を取れば十分なら、`urllib.request` や既存curlで取得した全文をそのまま使って構いません。
+For read-only data retrieval, do not start with a custom API/MCP; pick the smallest surface that meets the needed contract, in the order **local/static data → raw HTTP document → generic local parser → official API → MCP**. If the full HTML is enough, use the full text fetched with `urllib.request` or existing curl as-is.
 
-APIはauth・stable schema・pagination・server-side filtering/search・mutation・計算が必要なとき、MCPはtool discovery・typed invocation・session/resource等のagent protocol自体が価値になるときに昇格します。
+Move up to an API when you need auth, a stable schema, pagination, server-side filtering/search, mutation, or computation; move up to MCP when the agent protocol itself (tool discovery, typed invocation, sessions/resources, etc.) adds value.
 
-また、Pythonがorchestration layerなら日時/level付き診断は独自shell echo規約ではなくstdlib `logging` を優先します。
+When Python is the orchestration layer, prefer stdlib `logging` for timestamped, leveled diagnostics over a custom shell echo convention.
 
-詳細は [docs/minimal-transport-surface.md](docs/minimal-transport-surface.md) を参照してください。
+See [docs/minimal-transport-surface.md](docs/minimal-transport-surface.md) for details.
 
-## 失敗を証拠として残す
+## Keeping failures as evidence
 
-PR #1（マージ済み）では、探索中の失敗を単なるノイズとして捨てません。通常CIとは分離した **negative evidence / intentional failures** lane で、子pytestを意図的に失敗させ、raw JUnit・stdout・stderr・receiptを保存します。
+PR #1 (merged) does not throw away failures found during exploration as noise. In a **negative evidence / intentional failures** lane kept apart from normal CI, child pytest runs are made to fail on purpose, and raw JUnit, stdout, stderr, and receipts are saved.
 
-現在は pass / assertion failure / setup error / strict xfail / strict XPASS を明示的な testcase 名で固定し、子pytestが本当に非0終了し、JUnit上の分類も期待どおりであることを外側のvalidatorが確認します。その raw JUnit は通常の7-report collectorには混ぜず、専用の pinned shared failure-identity consumerへ渡します。
+Pass / assertion failure / setup error / strict xfail / strict XPASS are currently recorded under explicit testcase names as past patterns, and an outer validator confirms that the child pytest really exits non-zero and that the JUnit classification matches. That raw JUnit is not mixed into the normal 7-report collector; it goes to a dedicated pinned shared failure-identity consumer.
 
-この仕組みは「未知のfailureをexpected扱いにしてCIをgreenにする」ためのものではありません。expected failureを追加・変更する場合は testcase 名と期待分類を明示的に更新し、証跡差分としてreview可能にします。詳細は [tests/failure_lab/README.md](tests/failure_lab/README.md) を参照してください。
+This mechanism is not for "treating unknown failures as expected to turn CI green". Adding or changing an expected failure means updating the testcase name and expected classification explicitly, so the evidence diff can be reviewed. See [tests/failure_lab/README.md](tests/failure_lab/README.md) for details.
 
-## 検証範囲
+## Verification scope
 
-証拠レベルを混同しません。
+Evidence levels are kept distinct.
 
-- **Host-real**: GitHub Linux runner上で実コマンドを実行。
-- **Container-real**: CIでbuildした test-only image 内で実コマンドを実行。
-- **System-service-real**: 実際の backing service/state に対して実行。journal/systemd等で本当にserviceが動いている場合だけこの表現を使います。
-- **Construct-only/stub**: exact argv/transportは検証するが、実ツール・認証・serviceまでは測定していません。
+- **Host-real**: real commands run on a GitHub Linux runner.
+- **Container-real**: real commands run inside a test-only image built in CI.
+- **System-service-real**: run against a real backing service/state. This term is used only when a service is really running under journal/systemd, etc.
+- **Construct-only/stub**: the exact argv/transport is verified, but the real tool, auth, or service is not measured.
 
-| 対象 | 証拠 | 契約 |
+| Target | Evidence | Contract |
 |---|---|---|
-| Python / argparse | Host-real (3.11 / 3.12 / 3.14) | 真偽値・choices・required・排他・条件付き必須・不正入力、stdlib-only `python -S` import |
-| subprocess | Host-real | 空白・日本語・空文字・leading hyphen・shell風文字列・cwd・env・非ゼロ・timeout・不正UTF-8 |
-| pytest | Host-real | 複数file、`-q`、`--tb short`、`-k "a or b"`、明示 `--`、失敗結果 |
-| Git | Host-real + Container-real + Construct-only | temp repo、`-C`、`add --`、leading-hyphen/space/Unicode path、`ls-files -z`、`status --porcelain=v2 -z --branch`、`for-each-ref --format=...%00 --sort=...` を実測。`--pathspec-from-file=- --pathspec-file-nul` と有限の `cat-file --batch-command --buffer -Z` 呼出しは実GitでNUL入出力検証済み。常駐・双方向セッションは未測定 |
-| curl | Host-real + Container-real | local HTTP、repeated header、empty option value、Unicode URL/output path、HTTP failureに加え、`--fail-with-body` でbodyを残したままexit 22、`--fail-early` の複数transfer停止、`--write-out %{http_code}` を実測 |
-| ls/coreutils | Host-real + Container-real | `ls` の複数flag・明示 `--`・leading-hyphen/space/Unicode filenameに加え、GNU `sort -z --stable` のNUL区切りrecord処理を実測 |
-| journalctl | Container-real + Construct-only | container内で実binary/versionを実行。repeated `-u` / since / until / `-n` / no-pager のexact argvを固定 |
-| journal/systemd backing service | **未測定** | default CI imageはsystemd PID 1/journal serviceを起動しないため System-service-real を主張しない |
-| Docker | Host-real → Container-real | hostの `cli_args.Command` からlocal build済みimageへ `--`・空文字・leading hyphen・space・Unicode argvをexact transport |
-| Docker Compose | Host-real | local build済みimageだけを参照し、repeated `-f` + `config --services` を実行。registry/networkは不要 |
-| Node / npm | Host-real | `node_command` / `run_node` / `node_or_command` の argv 構築・探索・version probe（Node 24+、明示指定の失敗、`.cmd` 拒否）と `.cjs` / `.mjs` 実実行（`--`、空文字、leading hyphen、Unicode path、timeout・exit code）。CI は Ubuntu/Windows/macOS で Node 24 と latest の専用 lane。temp package + local JS probeで `npm run ... -- <args>` の transport も実測 |
-| Playwright CLI shape | Construct-only | orgで実際に使うdirect Node CLI形を固定し、greedyな `--project value` を避け `--project=value` + `--grep` + spec順序を検証。real browser/parser証拠はbrowser-test-kit側 |
-| gh | Host-real binary + Construct-only/stub | `gh --version` は実binary。API subcommand、repeated header、`--jq`、`--paginate --slurp`、`--cache 1h`、typed `-F` / raw `-f` fieldのexact argvを固定。live auth/networkは未測定 |
-| Flutter / Dart | Construct-only | `flutter build web -t ... --dart-define=...`、`dart run ... --output ...` の代表argvを固定。bootstrap/build実測はFlutter repo側 |
-| FFmpeg | Container-real | test-only imageにFFmpegを明示導入し、lavfiの極小音源を `-f lavfi -i ... -f null -` で処理。複数option/valueと特殊な `-` 出力を実測 |
-| uv | Construct-only | orgのPython matrixで使う `uv run --no-project --python ... --with ... python -m pytest` のnested argvを固定 |
+| Python / argparse | Host-real (3.11 / 3.12 / 3.14) | Booleans, choices, required, mutual exclusion, conditional requirements, invalid input, stdlib-only `python -S` import |
+| subprocess | Host-real | Spaces, Japanese text, empty strings, leading hyphens, shell-like strings, cwd, env, non-zero exit, timeout, invalid UTF-8 |
+| pytest | Host-real | Multiple files, `-q`, `--tb short`, `-k "a or b"`, explicit `--`, failure results |
+| Git | Host-real + Container-real + Construct-only | Measured: temp repo, `-C`, `add --`, leading-hyphen/space/Unicode paths, `ls-files -z`, `status --porcelain=v2 -z --branch`, `for-each-ref --format=...%00 --sort=...`. `--pathspec-from-file=- --pathspec-file-nul` and finite `cat-file --batch-command --buffer -Z` calls are verified with NUL I/O against real Git. Resident/bidirectional sessions are not measured |
+| curl | Host-real + Container-real | Local HTTP, repeated headers, empty option values, Unicode URL/output paths, HTTP failure, plus measured `--fail-with-body` exiting 22 while keeping the body, `--fail-early` stopping multiple transfers, and `--write-out %{http_code}` |
+| ls/coreutils | Host-real + Container-real | `ls` with multiple flags, explicit `--`, leading-hyphen/space/Unicode filenames, plus measured NUL-delimited record handling with GNU `sort -z --stable` |
+| journalctl | Container-real + Construct-only | Real binary/version run in the container. Exact argv for repeated `-u` / since / until / `-n` / no-pager recorded as past patterns |
+| journal/systemd backing service | **Not measured** | The default CI image does not start systemd PID 1 or a journal service, so System-service-real is not claimed |
+| Docker | Host-real → Container-real | Exact transport of `--`, empty strings, leading hyphens, spaces, and Unicode argv from the host's `cli_args.Command` into a locally built image |
+| Docker Compose | Host-real | Runs repeated `-f` + `config --services` referencing only the locally built image. No registry/network needed |
+| Node / npm | Host-real | Argv building, lookup, and version probe for `node_command` / `run_node` / `node_or_command` (Node 24+, explicit-choice failures, `.cmd` rejection) and real `.cjs` / `.mjs` runs (`--`, empty strings, leading hyphens, Unicode paths, timeout and exit code). CI has dedicated Node 24 and latest lanes on Ubuntu/Windows/macOS. Transport of `npm run ... -- <args>` is also measured with a temp package + local JS probe |
+| Playwright CLI shape | Construct-only | Records the direct Node CLI form actually used in the org as a past pattern, avoiding greedy `--project value` and verifying `--project=value` + `--grep` + spec order. Real browser/parser evidence lives in browser-test-kit |
+| gh | Host-real binary + Construct-only/stub | `gh --version` uses the real binary. Exact argv for API subcommands, repeated headers, `--jq`, `--paginate --slurp`, `--cache 1h`, and typed `-F` / raw `-f` fields recorded as past patterns. Live auth/network not measured |
+| Flutter / Dart | Construct-only | Representative argv for `flutter build web -t ... --dart-define=...` and `dart run ... --output ...` recorded as past patterns. Bootstrap/build is measured in the Flutter repo |
+| FFmpeg | Container-real | FFmpeg is installed explicitly in the test-only image and processes a tiny lavfi source with `-f lavfi -i ... -f null -`. Multiple options/values and the special `-` output are measured |
+| uv | Construct-only | Nested argv `uv run --no-project --python ... --with ... python -m pytest` used by the org's Python matrix recorded as a past pattern |
 
-AI coding向けには、人間向け表示をparseするよりも **machine-readable / NUL-safe / fail-fast / structured-field** な既存CLI契約を優先します。Git porcelain v2・`-z`/`%00`、curlの診断系、gh API paginationのような「地味だが壊れにくい」引数は積極的に回帰証拠へ取り込みます。一方、双方向の対話的batch protocolは未実装であり、有限のstdin入力が通ることを常駐処理の動作保証に拡張しません。
+For AI coding, prefer existing **machine-readable / NUL-safe / fail-fast / structured-field** CLI contracts over parsing human-oriented output. "Unglamorous but sturdy" arguments such as Git porcelain v2, `-z`/`%00`, curl diagnostics, and gh API pagination are actively added to regression evidence. Bidirectional interactive batch protocols are not implemented, and finite stdin input working is not stretched into a guarantee for resident processing.
 
-Host Python matrixは速いcore contractに限定し、Docker/systemd stateへ依存しません。Docker integration laneは `tests/docker/Dockerfile` の test-only image (`python:3.14.0-slim-bookworm`) をbuildし、host側のDocker transport/Compose検証とは別に、その中で同じ `cli_args.py` と pytest harnessを使ってGit/curl/ls/journalctl/FFmpegを検証します。`CLI_ARGS_CONTAINER_REAL=1` は test image 自体に埋め込まれ、CIや利用者が手動で切り替える必要はありません。Host matrixではそのmarkerが存在しないためcontainer-real suiteは自動skipし、Docker image内では自動有効になります。container-real suite は独立JUnitとして保存し、外側テスト1件へ証跡を畳み込みません。Docker image内も最新の uv と、同じ uv.lock でテスト依存を固定します。apt/pipによるuv導入はテスト基盤専用であり、`cli_args.py` のruntime依存ではありません。
+The host Python matrix is limited to fast core contracts and does not depend on Docker/systemd state. The Docker integration lane builds the test-only image in `tests/docker/Dockerfile` (`python:3.14.0-slim-bookworm`) and, separately from host-side Docker transport/Compose checks, verifies Git/curl/ls/journalctl/FFmpeg inside it with the same `cli_args.py` and pytest harness. `CLI_ARGS_CONTAINER_REAL=1` is baked into the test image itself; neither CI nor users need to toggle it. The host matrix lacks that marker, so the container-real suite skips automatically there and is enabled automatically inside the Docker image. The container-real suite is saved as its own JUnit rather than folded into a single outer test. The Docker image also uses the latest uv and the same uv.lock for test dependencies. Installing uv via apt/pip is test infrastructure only, not a runtime dependency of `cli_args.py`.
 
-Git/curl/ls等がhost環境に無い場合、host-real testcaseは理由付きskipになります。ただしDocker integration laneでは必要binaryをimageに明示的に入れるため、そのlaneではskipを許容しません。外部web siteやlive認証は不要です。
+If Git/curl/ls, etc. are missing from the host, host-real testcases skip with a reason. The Docker integration lane installs the needed binaries explicitly into the image, so skips are not allowed there. No external website or live auth is needed.
 
-Ubuntu CIではPython 3.11 / 3.12 / 3.14のJUnitに加えて、Node bridge（Ubuntu/Windows/macOS × Node 24 / latest、計6件）と Docker integration JUnitを別artifactとして保存します。さらにWindows/macOSではPython 3.12でstdlib/core contract と `tests/test_node_bridge.py` を実行し、OS固有のsubprocess/path/newline差を軽量に検証します。host Python 3件、Node 6件、Docker transport/Compose 1件、container-real CLI 1件、Windows/macOS core 2件の**全13 report**をshared exact-report collectorへ渡します。**argvを構築できること、stubへ渡せること、real CLIが動いたこと、live/service integrationまで測ったことは別契約です。** Windows/macOSのcore Python contractは実測します。live認証付きgh、real Playwright browser/parser、Flutter/Dart bootstrap/build、xprobe、systemd-backed journal serviceはこの初期版では未検証です。
+Ubuntu CI saves, as separate artifacts, the JUnit for Python 3.11 / 3.12 / 3.14 plus the Node bridge (Ubuntu/Windows/macOS × Node 24 / latest, 6 in total) and the Docker integration JUnit. Windows/macOS also run the stdlib/core contract and `tests/test_node_bridge.py` on Python 3.12 to check OS-specific subprocess/path/newline differences cheaply. **All 13 reports** — 3 host Python, 6 Node, 1 Docker transport/Compose, 1 container-real CLI, and 2 Windows/macOS core — go to the shared exact-report collector. **Being able to build argv, passing it to a stub, a real CLI running, and measuring live/service integration are separate contracts.** The core Python contract on Windows/macOS is measured. Live-authenticated gh, a real Playwright browser/parser, Flutter/Dart bootstrap/build, xprobe, and a systemd-backed journal service are not verified in this initial version.
 
 ```bash
 uv sync --locked
@@ -270,9 +270,9 @@ uv run --locked pytest -q -ra --tb=short --junitxml=test-results/pytest-local.xm
 node --test tests/node/cli_args.test.cjs
 ```
 
-`pyproject.toml` と `uv.lock` が開発・テスト環境の正本です。`tests/requirements.txt` は互換用です。root `requirements.txt` は既存のローカル導線を壊さないための test-only compatibility shim で、runtime依存を意味しません。本体が `python -S` で動くことと、外部ツールが存在することは別の条件です。pytest の実行は `uv run --locked pytest` です。開発依存の pytest は下限のみ（`pytest>=8`）で、exact pin も上限も置きません。`node --test` は Node テストのままです。
+`pyproject.toml` and `uv.lock` are the source of truth for the development/test environment. `tests/requirements.txt` is kept for compatibility. The root `requirements.txt` is a test-only compatibility shim that keeps existing local workflows working; it does not imply runtime dependencies. The module running under `python -S` and external tools being present are separate conditions. pytest runs with `uv run --locked pytest`. The development dependency pytest has a lower bound only (`pytest>=8`), with no exact pin or upper bound. `node --test` remains the Node test runner.
 
-速度ベンチマークではなく「どの利用パターンを再現して検証したか」を記録します。失敗事例は回帰テストへ追加し、実例から共通機能を増やします。HTMLの取得・構造抽出は別のツールへ置き、このファイルの引数・実行・出力機能を利用する想定です。
+This records "which usage patterns were reproduced and verified", not speed benchmarks. Failure cases are added to regression tests, and shared features grow from real examples. HTML fetching and structure extraction belong in separate tools, which are expected to use this file's argument, execution, and output features.
 
 ## Runtime and development Python policy
 
