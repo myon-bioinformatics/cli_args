@@ -3,6 +3,7 @@ import contextlib
 import dataclasses
 import io
 import json
+import os
 import re
 import subprocess
 import sys
@@ -46,20 +47,21 @@ def test_run_command_asdict_is_json_serializable():
 
 
 def invoke(*argv: str, stdin: str | bytes = "") -> subprocess.CompletedProcess[str]:
-    if isinstance(stdin, str):
-        return subprocess.run(
-            [sys.executable, "-S", str(CLI), *argv],
-            input=stdin,
-            capture_output=True,
-            text=True,
-            encoding="utf-8",
-            cwd=ROOT,
-        )
-    return subprocess.run(
+    """Run cli_args.py; decode captured stdout/stderr as UTF-8 (CLI writes stdout.buffer)."""
+    input_bytes = stdin.encode("utf-8") if isinstance(stdin, str) else stdin
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+    completed = subprocess.run(
         [sys.executable, "-S", str(CLI), *argv],
-        input=stdin,
+        input=input_bytes,
         capture_output=True,
         cwd=ROOT,
+        env=env,
+    )
+    return subprocess.CompletedProcess(
+        args=completed.args,
+        returncode=completed.returncode,
+        stdout=completed.stdout.decode("utf-8"),
+        stderr=completed.stderr.decode("utf-8"),
     )
 
 
