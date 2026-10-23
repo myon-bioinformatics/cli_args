@@ -53,7 +53,7 @@ test("vendored py_launch.cjs matches vendor.lock.json", () => {
     crypto.createHash("sha1").update(Buffer.concat([Buffer.from(`blob ${data.length}\0`), data])).digest("hex"),
     entry.blob_sha,
   );
-  assert.equal(entry.commit, "2ea31034ca3caa60ed769806baf750d75e296552");
+  assert.equal(entry.commit, "c73821de8492b2394c718cb276cad9f683ff1910");
 });
 
 test("cli_args.cjs does not spawn node", () => {
@@ -61,6 +61,15 @@ test("cli_args.cjs does not spawn node", () => {
   assert.match(src, /require\("\.\/vendor\/py_launch\.cjs"\)/);
   assert.doesNotMatch(src, /\bnode\b.*spawn/i);
   assert.doesNotMatch(src, /spawn(?:Sync)?\([^)]*shell\s*:\s*true/);
+});
+
+test("cli_args.cjs delegates stdin and response caps to py_launch", () => {
+  const src = fs.readFileSync(path.join(ROOT, "cli_args.cjs"), "utf8");
+  assert.match(src, /maxInputBytes:\s*CLI_STDIN_MAX_BYTES/);
+  assert.match(src, /responseMaxBytes:\s*CLI_RUN_RESPONSE_MAX_BYTES/);
+  assert.match(src, /responseMaxBytes:\s*CLI_RENDER_RESPONSE_MAX_BYTES/);
+  assert.match(src, /mapLaunchError:\s*pyMapLaunchError/);
+  assert.doesNotMatch(src, /maxBuffer:/);
 });
 
 test("runCommand roundtrip and child exit code", () => {

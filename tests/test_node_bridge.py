@@ -111,8 +111,8 @@ def test_node_or_command_empty_argv_matches_command():
 def test_node_or_command_opt_in():
     plain = node_or_command(("git", "status", "--short"))
     assert plain.argv == ("git", "status", "--short")
-    wrapped = node_or_command(("app.cjs", "--flag", "value"))
-    assert wrapped.argv[:2] == (resolve_node(), "app.cjs")
+    wrapped = node_or_command(("app.cjs", "--flag", "value"), node=shutil_which_node())
+    assert wrapped.argv[:2] == (shutil_which_node(), "app.cjs")
     assert wrapped.argv[2:] == ("--flag", "value")
 
 
@@ -175,7 +175,7 @@ def test_resolve_node_probe_timeout(tmp_path, monkeypatch):
 
 def test_resolve_node_discovery_order(monkeypatch, tmp_path):
     register = install_probe_stub(monkeypatch)
-    primary = register(tmp_path / "primary-node", version="v24.11.0")
+    primary = register(tmp_path / "primary-node", version="v24.0.0")
     fallback = shutil_which_node()
     monkeypatch.delenv("CLI_ARGS_NODE", raising=False)
     monkeypatch.setenv("NODE", primary)
@@ -200,7 +200,7 @@ def test_run_node_real_cjs_and_mjs(tmp_path):
         (mjs, ["--attached", "-x"]),
         (spaced, ["tail"]),
     ):
-        result = run_node(target, *values, timeout=30)
+        result = run_node(target, *values, node=shutil_which_node(), timeout=30)
         assert result.returncode == 0, result.stderr
         assert result.executed
         payload = json.loads(result.stdout)
@@ -209,21 +209,34 @@ def test_run_node_real_cjs_and_mjs(tmp_path):
 
 def test_run_node_exit_code_and_timeout(tmp_path):
     cjs, _ = write_echo_scripts(tmp_path)
-    failed = run_node(cjs, env=build_env(["EXIT_CODE=7"], inherit=True), timeout=30)
+    node = shutil_which_node()
+    failed = run_node(cjs, node=node, env=build_env(["EXIT_CODE=7"], inherit=True), timeout=30)
     assert failed.returncode == 7
     hang = tmp_path / "hang.cjs"
     hang.write_text("setInterval(() => {}, 1_000_000);", encoding="utf-8")
-    timed = run_node(hang, timeout=0.5)
+    timed = run_node(hang, node=node, timeout=0.5)
     assert timed.timed_out
     assert timed.returncode is None
 
 
 def shutil_which_node() -> str:
     import shutil
-    path = shutil.which("node")
-    if path is None:
-        pytest.skip("node is not installed")
-    return path
+
+    candidates: list[str] = []
+    nvm_root = Path.home() / ".nvm/versions/node"
+    if nvm_root.is_dir():
+        for entry in sorted(nvm_root.glob("v24*/bin/node"), reverse=True):
+            candidates.append(str(entry))
+    discovered = shutil.which("node")
+    if discovered:
+        candidates.append(discovered)
+    for path in candidates:
+        reset_node_probe_cache()
+        try:
+            return resolve_node(path)
+        except NodeNotFoundError:
+            continue
+    pytest.skip("Node 24+ is required for host-real node bridge tests")
 
 
 def test_run_node_rejects_non_bool_dry_run_without_executing(tmp_path):
@@ -261,9 +274,11 @@ def test_run_node_dry_run_skips_probe_without_node(monkeypatch, tmp_path):
     assert result.argv == ("node", str(cjs), "tail")
 
 
-def test_node_command_nul_rejected():
+def test_node_command_nul_rejected(tmp_path, monkeypatch):
+    register = install_probe_stub(monkeypatch)
+    node_bin = register(tmp_path / "node-bin")
     with pytest.raises(ValueError, match="NUL"):
-        node_command("ok.js", "bad\0")
+        node_command("ok.js", "bad\0", node=node_bin, probe=False)
 
 
 def test_resolve_node_probe_runs_once(monkeypatch, tmp_path):
@@ -281,3 +296,13 @@ def test_resolve_node_probe_runs_once(monkeypatch, tmp_path):
     assert resolve_node(counter) == counter
     assert resolve_node(counter) == counter
     assert calls["n"] == 1
+
+
+def test_package_json_declares_node_24_floor():
+    root = Path(__file__).resolve().parents[1]
+    engines = json.loads((root / "package.json").read_text(encoding="utf-8"))["engines"]
+    assert engines["node"] == ">=24"
+
+
+def test_node_min_major_is_24():
+    assert cli_args._NODE_MIN_MAJOR == 24
