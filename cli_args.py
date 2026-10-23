@@ -120,14 +120,25 @@ def positive_seconds(value: str) -> float:
 
 
 def add_output_arguments(parser: argparse.ArgumentParser) -> None:
-    parser.add_argument("--format", choices=("text", "json"), default="text")
+    parser.add_argument(
+        "--format",
+        choices=("text", "json"),
+        default="text",
+        help="text renders a human document; json writes one JSON document (default: text)",
+    )
     parser.add_argument("--output", type=Path, help="UTF-8 output file; default: stdout")
 
 
 def add_execution_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--dry-run", action="store_true", help="describe argv without executing")
-    parser.add_argument("--timeout", type=positive_seconds, default=None, metavar="SECONDS")
-    parser.add_argument("--cwd", type=Path)
+    parser.add_argument(
+        "--timeout",
+        type=positive_seconds,
+        default=None,
+        metavar="SECONDS",
+        help="positive finite seconds before the child is stopped",
+    )
+    parser.add_argument("--cwd", type=Path, help="working directory for the child process")
 
 
 def add_node_arguments(parser: argparse.ArgumentParser) -> None:
@@ -343,6 +354,8 @@ def _run_command_with_bytes(command: Command, *, cwd: str | os.PathLike[str] | N
                             stdin: str | bytes | None = None,
                             max_output_bytes: int | None = None) -> tuple[CommandResult, bytes, bytes]:
     """Like run_command, but also return captured stdout/stderr as raw bytes for the CLI."""
+    if type(dry_run) is not bool:
+        raise TypeError("dry_run must be bool")
     if timeout is not None and (not math.isfinite(timeout) or timeout <= 0):
         raise ValueError("timeout must be positive and finite")
     if stdin is not None and not isinstance(stdin, (str, bytes)):
@@ -517,7 +530,7 @@ def run_node(target: str | os.PathLike[str], *args: str | os.PathLike[str],
              **run_command_kwargs: Any) -> CommandResult:
     dry_run = run_command_kwargs.get("dry_run", False)
     if type(dry_run) is not bool:
-        dry_run = False
+        raise TypeError("dry_run must be bool")
     return run_command(
         node_command(target, *args, node=node, node_flags=node_flags, probe=not dry_run),
         **run_command_kwargs,
@@ -904,15 +917,37 @@ def _cli_render(format: str, response_max_bytes: int | None) -> int:
 
 
 def _main(argv: Sequence[str] | None = None) -> int:
+    help_formatter = argparse.RawDescriptionHelpFormatter
     parser = argparse.ArgumentParser(
         prog="cli_args.py",
-        description="Machine-facing entry points for run_command and render_output.",
+        description=(
+            "Machine-facing entry points for run_command and render_output.\n"
+            "exit 0: request handled; child status is JSON returncode, not this exit.\n"
+            "exit 1: child could not be started, or the response exceeded its byte cap.\n"
+            "exit 2: usage error, invalid JSON, or a rejected request field (one stderr line)."
+        ),
+        formatter_class=help_formatter,
         exit_on_error=False,
     )
     parser.add_argument("--version", action="version", version="%(prog)s " + __version__)
     subparsers = parser.add_subparsers(dest="command", required=False)
-    subparsers.add_parser("run", help="run a command from a JSON request on stdin")
-    render_parser = subparsers.add_parser("render", help="render a JSON value from stdin")
+    subparsers.add_parser(
+        "run",
+        help="run a command from a JSON request on stdin",
+        description=(
+            "Read one JSON object from stdin. argv (array of strings) is required.\n"
+            "Optional keys: timeout, cwd, env, input, max_output, dry_run, response_max_bytes.\n"
+            "Unknown keys and wrong types are exit 2. dry_run must be a JSON boolean.\n"
+            "When the request is handled this process exits 0 and the child status is returncode."
+        ),
+        formatter_class=help_formatter,
+    )
+    render_parser = subparsers.add_parser(
+        "render",
+        help="render a JSON value from stdin",
+        description="Read one JSON value from stdin and write render_output to stdout.",
+        formatter_class=help_formatter,
+    )
     render_parser.add_argument("--format", choices=("text", "json"), default="text")
     render_parser.add_argument(
         "--response-max-bytes",

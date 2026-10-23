@@ -50,9 +50,19 @@ def test_vendor_locked_job_runs_network_parent_vendor_resolve_regressions():
     text = path.read_text(encoding="utf-8")
     assert "Network parent vendor tools resolve regressions" in text
     assert (
-        "python -m pytest -q -m network tests/test_parent_vendor_tools_resolve.py"
+        "uv run --locked pytest -q -m network tests/test_parent_vendor_tools_resolve.py"
         in text
     )
     marker = "Network parent vendor tools resolve regressions"
     block = text.split(marker, 1)[1].split("- name:", 1)[0]
     assert "GITHUB_TOKEN: ${{ github.token }}" in block
+
+
+def test_pytest_jobs_run_through_uv_and_node_tests_stay():
+    text = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    assert "python -m pytest" not in text
+    assert text.count("uv run --locked pytest") >= 6
+    assert "node --test tests/node/cli_args.test.cjs" in text
+    dockerfile = (ROOT / "tests/docker/Dockerfile").read_text(encoding="utf-8")
+    assert 'CMD ["uv", "run", "--locked", "pytest"' in dockerfile
+    assert "python -m pytest" not in dockerfile

@@ -3,7 +3,7 @@
 This directory intentionally contains tests that **must not all pass**.
 
 The goal is to preserve failure behavior as evidence instead of treating every red child test as noise.
-`run_lab.py` launches a child pytest process, writes raw JUnit/stdout/stderr, and then validates that the
+`run_lab.py` launches a child pytest process with `uv run --locked pytest`, writes raw JUnit/stdout/stderr, and then validates that the
 failure taxonomy is exactly what the lab expected.
 
 Current intentional cases cover:

@@ -156,10 +156,13 @@ def test_resolve_node_rejects_cmd_wrapper(tmp_path, monkeypatch):
 
 def test_resolve_node_rejects_old_version(tmp_path, monkeypatch):
     register = install_probe_stub(monkeypatch)
-    fake = register(tmp_path / "fake-node", version="v16.9.0")
+    fake = register(tmp_path / "fake-node", version="v22.14.0")
     monkeypatch.delenv("CLI_ARGS_NODE", raising=False)
     with pytest.raises(NodeNotFoundError, match="24"):
         resolve_node(fake)
+    reset_node_probe_cache()
+    accepted = register(tmp_path / "node-24", version="v24.0.0")
+    assert resolve_node(accepted) == accepted
 
 
 def test_resolve_node_probe_timeout(tmp_path, monkeypatch):
@@ -234,6 +237,18 @@ def shutil_which_node() -> str:
         except NodeNotFoundError:
             continue
     pytest.skip("Node 24+ is required for host-real node bridge tests")
+
+
+def test_run_node_rejects_non_bool_dry_run_without_executing(tmp_path):
+    marker = tmp_path / "ran.txt"
+    script = tmp_path / "touch.cjs"
+    script.write_text(
+        "require('node:fs').writeFileSync(process.argv[2], 'ran\\n');\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(TypeError, match="dry_run must be bool"):
+        run_node(script, str(marker), dry_run="yes")
+    assert not marker.exists()
 
 
 def test_run_node_dry_run_matches_run_command(tmp_path):

@@ -54,11 +54,11 @@ write_output(result, format="json")
 
 コマンドごとの意味や有効な組み合わせは呼び出し側で定義します。引数は文字列またはテキストパスで渡し、数値は明示的に文字列化します。シェル展開・引用符の解釈・文字列の分割は行いません。`repeated()` / `multiple()` / `passthrough()` の collection 引数は、順序を持つ有限の `Sequence`（list/tuple等）専用です。単一の `str` / `PathLike` に加え、順序が不定な set/dict や一度きりの generator も `TypeError` で拒否します。argvの順序・再現性をAPI契約にするためです。1トークンだけ追加したい場合は `option()` / `positional()` を使います。
 
-`pytest_command(paths, quiet=True, tb="short", summary=True, extra=[...])` は `python -m pytest -q --tb short -ra ...` を構築する任意のプリセットです。`paths` と `extra` も順序を持つ有限の `Sequence` 専用で、単一の `str` / `PathLike`、set/dict、generator は拒否します。pytestを本体からimportせず、自動インストールもしません。
+`pytest_command(paths, quiet=True, tb="short", summary=True, extra=[...])` は `python -m pytest -q --tb short -ra ...` を構築する任意のプリセットです。`paths` と `extra` も順序を持つ有限の `Sequence` 専用で、単一の `str` / `PathLike`、set/dict、generator は拒否します。pytestを本体からimportせず、自動インストールもしません。このリポジトリ自身のテストは `uv run --locked pytest` で実行します。`pytest_command` は呼び出し先の pytest CLI を組むだけで、uv は呼びません。
 
 ## Node.js を argv から実行する
 
-`node_command(target, *args, node=None, node_flags=())` は `[node, *node_flags, target, *args]` を構築します。`run_node(...)` は `run_command()` の薄いラッパで、`timeout` / `max_output_bytes` / `env` / `dry_run` など既存の実行契約をそのまま使えます。`dry_run=True` のときは `node --version` の probe も子プロセス起動も行わず、探索順に沿った argv[0] トークン（最後は字面 `node`）だけを組み立てます。`is_node_target(path)` は `.js` / `.cjs` / `.mjs` を判定します。`node_or_command([])` は `Command(())` と同様に `ValueError` です。
+`node_command(target, *args, node=None, node_flags=())` は `[node, *node_flags, target, *args]` を構築します。`run_node(...)` は `run_command()` の薄いラッパで、`timeout` / `max_output_bytes` / `env` / `dry_run` など既存の実行契約をそのまま使えます。`dry_run` は bool 以外を `TypeError` で拒否します。文字列を偽として実行することはありません。`dry_run=True` のときは `node --version` の probe も子プロセス起動も行わず、探索順に沿った argv[0] トークン（最後は字面 `node`）だけを組み立てます。`is_node_target(path)` は `.js` / `.cjs` / `.mjs` を判定します。`node_or_command([])` は `Command(())` と同様に `ValueError` です。
 
 Node の探索順は次のとおりです。`node=` 引数、`--node`、`CLI_ARGS_NODE` は**明示指定**で、失敗時にフォールバックしません。その後 `NODE` 環境変数、`shutil.which('node')` を試します。Windows の `.cmd` / `.bat` ラッパは拒否し、見つかった実行ファイルは `node --version` を 5 秒以内に一度だけ確認し、Node 24 以上であることを要求します（`dry_run` 時は probe を省略）。見つからない・古い・タイムアウトは `NodeNotFoundError`（`FileNotFoundError` のサブクラス、メッセージは `cli_args: node …`）です。子プロセスの終了コードは `returncode` にそのまま載ります。`shell=True` は使いません。`package.json` の `engines.node` も **>=24** です。
 
@@ -73,7 +73,7 @@ command = node_or_command(["playwright.cjs", "test", "--list"], node_flags=["--n
 
 ## Node.js から `cli_args.py` を呼ぶ
 
-Python 側の `run_command` / `render_output` を Node 24+ から使うときは、リポジトリ直下の `cli_args.cjs` を require します。実装は親リポジトリ `myon-bioinformatics` の共有ランチャー `vendor/py_launch.cjs` 経由で `cli_args.py run` / `render` を起動するだけで、Node から Node を起動しません。`shell: true` は使いません。stdin 上限は `py_launch` の `maxInputBytes`（`CLI_STDIN_MAX_BYTES`、4 MiB）、応答キャプチャは `responseMaxBytes`（96 MiB、`maxBuffer` は共有マージン 512 バイトのみ）です。
+Python 側の `run_command` / `render_output` を Node 24+ から使うときは、リポジトリ直下の `cli_args.cjs` を require します。`cli_args.cjs` は呼び出し時に Node 24 未満を拒否します。実装は親リポジトリ `myon-bioinformatics` の共有ランチャー `vendor/py_launch.cjs` 経由で `cli_args.py run` / `render` を起動するだけで、Node から Node を起動しません。`shell: true` は使いません。stdin 上限は `py_launch` の `maxInputBytes`（`CLI_STDIN_MAX_BYTES`、4 MiB）、応答キャプチャは `responseMaxBytes`（96 MiB、`maxBuffer` は共有マージン 512 バイトのみ）です。
 
 | 探索 | 意味 |
 |---|---|
@@ -153,7 +153,7 @@ print(trim_output(result.stdout, head=20, tail=40))
 
 ```bash
 python -S examples/run_cli.py --format json --dry-run -- git status --short
-python -S examples/run_cli.py --format json --output result.json --timeout 30 -- python -m pytest -q --tb=short -ra
+python -S examples/run_cli.py --format json --output result.json --timeout 30 -- uv run --locked pytest -q --tb=short -ra
 ```
 
 `cli_args.py` 自体にも、Node 等のホストから `python -S cli_args.py` で呼べる機械向け入口があります（import 時は argv を解析しません）。
@@ -264,12 +264,13 @@ Git/curl/ls等がhost環境に無い場合、host-real testcaseは理由付きsk
 Ubuntu CIではPython 3.11 / 3.12 / 3.14のJUnitに加えて、Node bridge（Ubuntu/Windows/macOS × Node 24 / latest、計6件）と Docker integration JUnitを別artifactとして保存します。さらにWindows/macOSではPython 3.12でstdlib/core contract と `tests/test_node_bridge.py` を実行し、OS固有のsubprocess/path/newline差を軽量に検証します。host Python 3件、Node 6件、Docker transport/Compose 1件、container-real CLI 1件、Windows/macOS core 2件の**全13 report**をshared exact-report collectorへ渡します。**argvを構築できること、stubへ渡せること、real CLIが動いたこと、live/service integrationまで測ったことは別契約です。** Windows/macOSのcore Python contractは実測します。live認証付きgh、real Playwright browser/parser、Flutter/Dart bootstrap/build、xprobe、systemd-backed journal serviceはこの初期版では未検証です。
 
 ```bash
-python -m pip install -r tests/requirements.txt
+uv sync --locked
 python -S -c "import cli_args"
-python -m pytest -q -ra --tb=short --junitxml=test-results/pytest-local.xml
+uv run --locked pytest -q -ra --tb=short --junitxml=test-results/pytest-local.xml
+node --test tests/node/cli_args.test.cjs
 ```
 
-`pyproject.toml` と `uv.lock` が開発・テスト環境の正本です。`tests/requirements.txt` は互換用です。root `requirements.txt` は既存のローカル導線を壊さないための test-only compatibility shim で、runtime依存を意味しません。本体が `python -S` で動くことと、外部ツールが存在することは別の条件です。pytestは通常の `python -m pytest` で実行します。
+`pyproject.toml` と `uv.lock` が開発・テスト環境の正本です。`tests/requirements.txt` は互換用です。root `requirements.txt` は既存のローカル導線を壊さないための test-only compatibility shim で、runtime依存を意味しません。本体が `python -S` で動くことと、外部ツールが存在することは別の条件です。pytest の実行は `uv run --locked pytest` です。開発依存の pytest は下限のみ（`pytest>=8`）で、exact pin も上限も置きません。`node --test` は Node テストのままです。
 
 速度ベンチマークではなく「どの利用パターンを再現して検証したか」を記録します。失敗事例は回帰テストへ追加し、実例から共通機能を増やします。HTMLの取得・構造抽出は別のツールへ置き、このファイルの引数・実行・出力機能を利用する想定です。
 
@@ -282,7 +283,8 @@ package. Development/test environments use Python 3.11+ and a committed uv lock:
 
 ```sh
 uv sync --locked --python 3.11
-uv run --locked python -m pytest
+uv run --locked pytest
+node --test tests/node/cli_args.test.cjs
 python -S -m unittest discover -s tests -p test_runtime_compatibility.py -v
 ```
 

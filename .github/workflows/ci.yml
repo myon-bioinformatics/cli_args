@@ -59,7 +59,7 @@ jobs:
       - name: Network parent vendor tools resolve regressions
         env:
           GITHUB_TOKEN: ${{ github.token }}
-        run: python -m pytest -q -m network tests/test_parent_vendor_tools_resolve.py
+        run: uv run --locked pytest -q -m network tests/test_parent_vendor_tools_resolve.py
       - name: Verify and recreate locked vendor snapshot
         shell: bash
         run: |
@@ -99,7 +99,7 @@ jobs:
           uv sync --locked --python "$(python -c 'import sys; print(sys.executable)')"
           python -c "import os; from pathlib import Path; print(Path('.venv').resolve() / ('Scripts' if os.name == 'nt' else 'bin'))" >> "$GITHUB_PATH"
       - run: python -S -c "import cli_args; assert cli_args.__all__"
-      - run: python -m pytest -q -m "not network" -ra --tb=short --junitxml=test-results/pytest-${{ matrix.python }}.xml
+      - run: uv run --locked pytest -q -m "not network" -ra --tb=short --junitxml=test-results/pytest-${{ matrix.python }}.xml
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:
@@ -134,7 +134,7 @@ jobs:
         run: |
           uv sync --locked --python "$(python -c 'import sys; print(sys.executable)')"
           python -c "import os; from pathlib import Path; print(Path('.venv').resolve() / ('Scripts' if os.name == 'nt' else 'bin'))" >> "$GITHUB_PATH"
-      - run: python -m pytest -q -m "not network" -ra --tb=short tests/test_node_bridge.py --junitxml=test-results/node-${{ matrix.os }}-${{ matrix.node }}.xml
+      - run: uv run --locked pytest -q -m "not network" -ra --tb=short tests/test_node_bridge.py --junitxml=test-results/node-${{ matrix.os }}-${{ matrix.node }}.xml
       - run: node --test tests/node/cli_args.test.cjs
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
@@ -166,13 +166,13 @@ jobs:
       - name: Verify Docker transport and Compose grammar
         env:
           CLI_ARGS_TEST_IMAGE: cli-args-test:ci
-        run: python -m pytest -q -m "not network" -ra --tb=short tests/test_docker_integration.py tests/test_docker_policy.py --junitxml=test-results/docker-integration.xml
+        run: uv run --locked pytest -q -m "not network" -ra --tb=short tests/test_docker_integration.py tests/test_docker_policy.py --junitxml=test-results/docker-integration.xml
       - name: Run container-real CLI suite
         run: >-
           docker run --rm
           -v "$PWD/test-results:/reports"
           cli-args-test:ci
-          python -m pytest -q -m "not network" -ra --tb=short tests/test_container_commands.py tests/test_container_patterns.py
+          uv run --locked pytest -q -m "not network" -ra --tb=short tests/test_container_commands.py tests/test_container_patterns.py
           --junitxml=/reports/container-real.xml
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
@@ -219,7 +219,7 @@ jobs:
           uv sync --locked --python "$(python -c 'import sys; print(sys.executable)')"
           python -c "import os; from pathlib import Path; print(Path('.venv').resolve() / ('Scripts' if os.name == 'nt' else 'bin'))" >> "$GITHUB_PATH"
       - run: python -S -c "import cli_args; assert cli_args.__all__"
-      - run: python -m pytest -q -m "not network" -ra --tb=short tests/test_cli_args.py tests/test_cli_args_main.py tests/test_stdlib_commands.py tests/test_stdlib_functions.py tests/test_orchestration.py tests/test_observation_surface.py tests/test_option_suggestions.py tests/test_node_bridge.py --junitxml=test-results/core-${{ matrix.os }}.xml
+      - run: uv run --locked pytest -q -m "not network" -ra --tb=short tests/test_cli_args.py tests/test_cli_args_main.py tests/test_stdlib_commands.py tests/test_stdlib_functions.py tests/test_orchestration.py tests/test_observation_surface.py tests/test_option_suggestions.py tests/test_node_bridge.py --junitxml=test-results/core-${{ matrix.os }}.xml
       - run: node --test tests/node/cli_args.test.cjs
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()

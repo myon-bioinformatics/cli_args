@@ -161,6 +161,18 @@ def test_timeout_partial_output():
     assert result.returncode is None and "started" in result.stdout
 
 
+def test_run_command_rejects_non_bool_dry_run_without_executing(tmp_path):
+    marker = tmp_path / "ran.txt"
+    script = tmp_path / "write_marker.py"
+    script.write_text(
+        "import pathlib, sys\npathlib.Path(sys.argv[1]).write_text('ran', encoding='utf-8')\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(TypeError, match="dry_run must be bool"):
+        run_command(Command((sys.executable, "-S", str(script), str(marker))), dry_run=1)
+    assert not marker.exists()
+
+
 def test_dry_run_missing_command():
     command = Command(("cli-args-nonexistent-executable",))
     result = run_command(command, dry_run=True)
@@ -206,6 +218,29 @@ def test_import_under_python_s_has_no_side_effects():
     result = subprocess.run([sys.executable, "-S", "-c", "import cli_args"], cwd=ROOT,
                             capture_output=True, text=True)
     assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
+
+
+def test_example_help_states_machine_contract():
+    result = subprocess.run(
+        [sys.executable, "-S", str(ROOT / "examples/run_cli.py"), "--help"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert result.returncode == 0, result.stderr
+    for token in ("--format", "json", "exit 124:", "exit 125:", "exit 127:", "--dry-run",
+                  "--timeout", "--cwd", "positive finite seconds"):
+        assert token in result.stdout
+    still_required = subprocess.run(
+        [sys.executable, "-S", str(ROOT / "examples/run_cli.py"), "--format", "json"],
+        cwd=ROOT,
+        capture_output=True,
+        text=True,
+        encoding="utf-8",
+    )
+    assert still_required.returncode == 2
+    assert "use -- before" in still_required.stderr
 
 
 def test_example_boundary_and_exit_codes(tmp_path):
