@@ -124,6 +124,22 @@ python -S examples/run_cli.py --format json --dry-run -- git status --short
 python -S examples/run_cli.py --format json --output result.json --timeout 30 -- python -m pytest -q --tb=short -ra
 ```
 
+`cli_args.py` 自体にも、Node 等のホストから `python -S cli_args.py` で呼べる機械向け入口があります（import 時は argv を解析しません）。
+
+| サブコマンド | 入力 | 出力 |
+|---|---|---|
+| `run` | stdin に JSON リクエスト | `CommandResult` を JSON で stdout |
+| `render --format text\|json` | stdin に任意の JSON 値 | `render_output` の結果を stdout |
+
+`run` の JSON オブジェクトは `argv`（必須）に加え、任意で `timeout` / `cwd` / `env` / `input` / `max_output` / `dry_run` を受け取ります。stdin は UTF-8 で **4 MiB** まで（超過・非 UTF-8・`NaN`/`Infinity` を含む JSON は終了 **2**）。未知キー・型不一致・不正 JSON も終了 **2**（stderr 1行）。リクエストを処理できた場合は終了 **0** で、子プロセスの終了コードは JSON の `returncode` に入ります。実行ファイル不在や `cwd` 不存在などの**起動失敗**は **1** です。`shell` は受け付けません。
+
+`run` の JSON には、ライブラリの `render_output` とは別に、捕捉した生バイト列の **Base64** フィールド `stdout_b64` / `stderr_b64` を常に付けます。`stdout` / `stderr` は UTF-8 として解釈し、不正バイトは U+FFFD に置換したテキストです。バイナリや非 UTF-8 を欠損なく扱う場合は `*_b64` を使います。`--version` は `cli_args.py` 内の `__version__` 定数（vendor 単体コピーでも同じ値）を表示します。
+
+```bash
+printf '%s' '{"argv":["python","-c","print(1)"],"dry_run":true}' | python -S cli_args.py run
+printf '%s' '{"argv":["日本語"],"returncode":0,"stdout":"","stderr":"","executed":true}' | python -S cli_args.py render --format json
+```
+
 ラッパー引数と実行先引数は必須の `--` で区切ります。実行先の `--format` などは境界の後ろに置けます。
 
 - 実行結果: `argv`, `returncode`, `stdout`, `stderr`, `executed`, `timed_out`。

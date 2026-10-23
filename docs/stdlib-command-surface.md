@@ -18,6 +18,8 @@ The standard library is therefore a third command surface alongside the OS CLI a
 
 `cli_args.py` does **not** wrap or rename these modules. Use their real module names so provenance, Python-version behavior, and upstream documentation stay visible.
 
+When a non-Python host (for example Node) must drive `run_command` / `render_output` without importing the module, call `python -S /path/to/cli_args.py run` or `render` with a JSON payload on stdin. That path uses the same contracts as the library API and stays stdlib-only under `python -S`.
+
 ## Python 3.10+ baseline
 
 These examples are useful building blocks for this repository's supported Python floor.
