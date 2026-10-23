@@ -22,12 +22,12 @@ class CliArgsRequestError extends Error {
 function mapLaunchError(err, failureFallback) {
   const msg = String(err && err.message ? err.message : err);
   if (msg.startsWith("py_launch: Python process failed: ")) {
-    throw Error(ERR_PREFIX + msg.slice("py_launch: Python process failed: ".length));
+    throw new Error(ERR_PREFIX + msg.slice("py_launch: Python process failed: ".length));
   }
   const spawn = msg.match(/^py_launch: ([^:]+): (spawnSync .+)$/);
-  if (spawn) throw Error(ERR_PREFIX + spawn[2]);
+  if (spawn) throw new Error(ERR_PREFIX + spawn[2]);
   if (msg.startsWith("py_launch: ")) {
-    throw Error(ERR_PREFIX + msg.slice("py_launch: ".length));
+    throw new Error(ERR_PREFIX + msg.slice("py_launch: ".length));
   }
   if (err && Object.hasOwn(err, "status")) {
     if (err.status === 2) {
@@ -35,7 +35,7 @@ function mapLaunchError(err, failureFallback) {
       throw new CliArgsRequestError(detail);
     }
     if (err.status !== 0) {
-      throw Error((err.stderr && err.stderr.toString("utf8").trim()) || failureFallback);
+      throw new Error((err.stderr && err.stderr.toString("utf8").trim()) || failureFallback);
     }
   }
   throw err;
@@ -74,7 +74,7 @@ function runCommand(argv, opts = {}) {
  */
 function render(value, format = "text", opts = {}) {
   if (format !== "text" && format !== "json") {
-    throw Error("format must be text or json");
+    throw new Error("format must be text or json");
   }
   const input = `${JSON.stringify(value)}\n`;
   try {

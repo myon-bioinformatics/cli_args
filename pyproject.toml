@@ -1,5 +1,6 @@
 [project]
 name = "cli-args-dev"
+# Keep in sync with cli_args.__version__ (enforced in tests/test_cli_args_main.py).
 version = "0.0.0"
 requires-python = ">=3.10"
 dependencies = []
