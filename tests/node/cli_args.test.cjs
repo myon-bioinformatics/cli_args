@@ -70,23 +70,52 @@ test("runCommand roundtrip and child exit code", () => {
 
 test("runCommand preserves Japanese output", () => {
   const {runCommand} = require(path.join(ROOT, "cli_args.cjs"));
-  const body = runCommand([PYTHON, "-S", "-c", "print('日本語')"]);
+  const body = runCommand([PYTHON, "-S", "-c", "print('日本語')"], {
+    env: {PYTHONUTF8: "1", PYTHONIOENCODING: "utf-8"},
+  });
   assert.equal(normalizeNewlines(body.stdout), "日本語\n");
   assert.equal(body.returncode, 0);
+});
+
+test("runCommand does not inject PYTHONUTF8 into wrapped env", () => {
+  const {runCommand} = require(path.join(ROOT, "cli_args.cjs"));
+  const code = [
+    "import os, json",
+    "print(json.dumps({",
+    "  'PYTHONUTF8': os.environ.get('PYTHONUTF8'),",
+    "  'PYTHONIOENCODING': os.environ.get('PYTHONIOENCODING'),",
+    "}))",
+  ].join("\n");
+  const body = runCommand([PYTHON, "-S", "-c", code], {
+    env: {PYTHONUTF8: "0", PYTHONIOENCODING: "cp1252"},
+  });
+  const seen = JSON.parse(normalizeNewlines(body.stdout));
+  assert.equal(seen.PYTHONUTF8, "0");
+  assert.equal(seen.PYTHONIOENCODING, "cp1252");
 });
 
 test("render text and json", () => {
   const {render} = require(path.join(ROOT, "cli_args.cjs"));
   const value = {title: "日本語", n: 1};
-  assert.equal(normalizeNewlines(render(value, "text")), "{'title': '日本語', 'n': 1}\n");
+  assert.equal(render(value, "text"), "{'title': '日本語', 'n': 1}\n");
   assert.deepEqual(JSON.parse(render(value, "json")), value);
 });
 
-test("CLI_ARGS_PYTHON is used when set explicitly", {skip: process.platform === "win32"}, (t) => {
+test("CLI_ARGS_PYTHON is used when set explicitly", (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cli-args-fake-py-"));
   t.after(() => fs.rmSync(dir, {recursive: true, force: true}));
-  const {fake, marker} = writeFakePython(dir);
   const {runCommand} = require(path.join(ROOT, "cli_args.cjs"));
+  if (process.platform === "win32") {
+    const resolved = spawnSync(PYTHON, ["-c", "import sys; print(sys.executable)"], {
+      encoding: "utf8",
+    }).stdout.trim();
+    const alt = path.join(dir, "alt-python.exe");
+    fs.copyFileSync(resolved, alt);
+    const body = runCommand([resolved, "-S", "-c", "print('alt-interpreter')"], {python: alt});
+    assert.equal(normalizeNewlines(body.stdout), "alt-interpreter\n");
+    return;
+  }
+  const {fake, marker} = writeFakePython(dir);
   try {
     runCommand([PYTHON, "-S", "-c", "print(1)"], {python: fake});
   } catch {

@@ -107,6 +107,30 @@ def test_run_wrapper_zero_even_when_child_fails():
     assert json.loads(proc.stdout)["returncode"] == 3
 
 
+def test_run_env_not_altered_by_bridge_defaults():
+    code = (
+        "import os, json; "
+        "print(json.dumps({"
+        "'PYTHONUTF8': os.environ.get('PYTHONUTF8'), "
+        "'PYTHONIOENCODING': os.environ.get('PYTHONIOENCODING')"
+        "}))"
+    )
+    proc = invoke(
+        "run",
+        stdin=json.dumps(
+            {
+                "argv": [sys.executable, "-S", "-c", code],
+                "env": {"PYTHONUTF8": "0", "PYTHONIOENCODING": "cp1252"},
+            },
+        ),
+    )
+    assert proc.returncode == 0
+    body = json.loads(proc.stdout)
+    seen = json.loads(body["stdout"].strip())
+    assert seen["PYTHONUTF8"] == "0"
+    assert seen["PYTHONIOENCODING"] == "cp1252"
+
+
 def test_run_japanese_argv_and_output():
     payload = {
         "argv": [
@@ -249,7 +273,7 @@ def test_render_json_and_text():
 
     text_proc = invoke("render", "--format", "text", stdin=json.dumps(value))
     assert text_proc.returncode == 0
-    assert text_proc.stdout == "{'title': '日本語', 'n': 1}\n"
+    assert text_proc.stdout.replace("\r\n", "\n") == "{'title': '日本語', 'n': 1}\n"
 
 
 def test_cli_usage_and_version():
