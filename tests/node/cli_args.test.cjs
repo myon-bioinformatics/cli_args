@@ -10,6 +10,10 @@ const {test} = require("node:test");
 const ROOT = path.join(__dirname, "..", "..");
 const PYTHON = process.env.PYTHON || "python3";
 
+function normalizeNewlines(text) {
+  return String(text).replace(/\r\n/g, "\n");
+}
+
 function lockEntry() {
   const lock = JSON.parse(fs.readFileSync(path.join(ROOT, "vendor.lock.json"), "utf8"));
   const entry = lock.files.find((item) => item.destination === "vendor/py_launch.cjs");
