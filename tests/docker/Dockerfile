@@ -13,4 +13,4 @@ RUN python -m pip install --no-cache-dir "uv>=0.13.3" \
     && uv sync --locked --python "$(command -v python)"
 ENV PATH="/workspace/.venv/bin:$PATH"
 
-CMD ["python", "-m", "pytest", "-q", "tests/test_container_commands.py"]
+CMD ["uv", "run", "--locked", "pytest", "-q", "tests/test_container_commands.py"]

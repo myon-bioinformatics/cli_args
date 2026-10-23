@@ -44,8 +44,9 @@ def main() -> int:
     started_at = datetime.now(timezone.utc).isoformat()
     started = time.monotonic()
     command = [
-        sys.executable,
-        "-m",
+        "uv",
+        "run",
+        "--locked",
         "pytest",
         "-q",
         "-ra",
@@ -53,7 +54,7 @@ def main() -> int:
         str(CASE_FILE),
         f"--junitxml={JUNIT}",
     ]
-    LOGGER.info("child_start executable=%s", sys.executable)
+    LOGGER.info("child_start command=%s", command[0])
     completed = subprocess.run(
         command,
         cwd=ROOT,

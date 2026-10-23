@@ -54,7 +54,7 @@ write_output(result, format="json")
 
 コマンドごとの意味や有効な組み合わせは呼び出し側で定義します。引数は文字列またはテキストパスで渡し、数値は明示的に文字列化します。シェル展開・引用符の解釈・文字列の分割は行いません。`repeated()` / `multiple()` / `passthrough()` の collection 引数は、順序を持つ有限の `Sequence`（list/tuple等）専用です。単一の `str` / `PathLike` に加え、順序が不定な set/dict や一度きりの generator も `TypeError` で拒否します。argvの順序・再現性をAPI契約にするためです。1トークンだけ追加したい場合は `option()` / `positional()` を使います。
 
-`pytest_command(paths, quiet=True, tb="short", summary=True, extra=[...])` は `python -m pytest -q --tb short -ra ...` を構築する任意のプリセットです。`paths` と `extra` も順序を持つ有限の `Sequence` 専用で、単一の `str` / `PathLike`、set/dict、generator は拒否します。pytestを本体からimportせず、自動インストールもしません。
+`pytest_command(paths, quiet=True, tb="short", summary=True, extra=[...])` は `python -m pytest -q --tb short -ra ...` を構築する任意のプリセットです。`paths` と `extra` も順序を持つ有限の `Sequence` 専用で、単一の `str` / `PathLike`、set/dict、generator は拒否します。pytestを本体からimportせず、自動インストールもしません。このリポジトリ自身のテストは `uv run --locked pytest` で実行します。`pytest_command` は呼び出し先の pytest CLI を組むだけで、uv は呼びません。
 
 ## Node.js を argv から実行する
 
@@ -153,7 +153,7 @@ print(trim_output(result.stdout, head=20, tail=40))
 
 ```bash
 python -S examples/run_cli.py --format json --dry-run -- git status --short
-python -S examples/run_cli.py --format json --output result.json --timeout 30 -- python -m pytest -q --tb=short -ra
+python -S examples/run_cli.py --format json --output result.json --timeout 30 -- uv run --locked pytest -q --tb=short -ra
 ```
 
 `cli_args.py` 自体にも、Node 等のホストから `python -S cli_args.py` で呼べる機械向け入口があります（import 時は argv を解析しません）。
@@ -264,12 +264,13 @@ Git/curl/ls等がhost環境に無い場合、host-real testcaseは理由付きsk
 Ubuntu CIではPython 3.11 / 3.12 / 3.14のJUnitに加えて、Node bridge（Ubuntu/Windows/macOS × Node 24 / latest、計6件）と Docker integration JUnitを別artifactとして保存します。さらにWindows/macOSではPython 3.12でstdlib/core contract と `tests/test_node_bridge.py` を実行し、OS固有のsubprocess/path/newline差を軽量に検証します。host Python 3件、Node 6件、Docker transport/Compose 1件、container-real CLI 1件、Windows/macOS core 2件の**全13 report**をshared exact-report collectorへ渡します。**argvを構築できること、stubへ渡せること、real CLIが動いたこと、live/service integrationまで測ったことは別契約です。** Windows/macOSのcore Python contractは実測します。live認証付きgh、real Playwright browser/parser、Flutter/Dart bootstrap/build、xprobe、systemd-backed journal serviceはこの初期版では未検証です。
 
 ```bash
-python -m pip install -r tests/requirements.txt
+uv sync --locked
 python -S -c "import cli_args"
-python -m pytest -q -ra --tb=short --junitxml=test-results/pytest-local.xml
+uv run --locked pytest -q -ra --tb=short --junitxml=test-results/pytest-local.xml
+node --test tests/node/cli_args.test.cjs
 ```
 
-`pyproject.toml` と `uv.lock` が開発・テスト環境の正本です。`tests/requirements.txt` は互換用です。root `requirements.txt` は既存のローカル導線を壊さないための test-only compatibility shim で、runtime依存を意味しません。本体が `python -S` で動くことと、外部ツールが存在することは別の条件です。pytestは通常の `python -m pytest` で実行します。
+`pyproject.toml` と `uv.lock` が開発・テスト環境の正本です。`tests/requirements.txt` は互換用です。root `requirements.txt` は既存のローカル導線を壊さないための test-only compatibility shim で、runtime依存を意味しません。本体が `python -S` で動くことと、外部ツールが存在することは別の条件です。pytest の実行は `uv run --locked pytest` です。開発依存の pytest は下限のみ（`pytest>=8`）で、exact pin も上限も置きません。`node --test` は Node テストのままです。
 
 速度ベンチマークではなく「どの利用パターンを再現して検証したか」を記録します。失敗事例は回帰テストへ追加し、実例から共通機能を増やします。HTMLの取得・構造抽出は別のツールへ置き、このファイルの引数・実行・出力機能を利用する想定です。
 
@@ -282,7 +283,8 @@ package. Development/test environments use Python 3.11+ and a committed uv lock:
 
 ```sh
 uv sync --locked --python 3.11
-uv run --locked python -m pytest
+uv run --locked pytest
+node --test tests/node/cli_args.test.cjs
 python -S -m unittest discover -s tests -p test_runtime_compatibility.py -v
 ```
 
