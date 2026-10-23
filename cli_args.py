@@ -6,6 +6,7 @@ External tools keep their own option semantics; pass their argv unchanged.
 from __future__ import annotations
 
 import argparse
+import base64
 from difflib import get_close_matches
 from collections.abc import Sequence as SequenceABC
 from dataclasses import asdict, dataclass, field
@@ -20,6 +21,8 @@ import sys
 import tempfile
 from threading import Event, Lock, Thread
 from typing import Any, Iterable, Mapping, Sequence, TextIO
+
+__version__ = "0.0.0"
 
 __all__ = [
     "Argument", "make_parser", "parse_args", "add_output_arguments",
@@ -223,9 +226,22 @@ def _decode(value: bytes | None) -> str:
     return (value or b"").decode("utf-8", errors="replace")
 
 
-def _run_bounded(command: Command, data: bytes | None, *, cwd: str | os.PathLike[str] | None,
-                 timeout: float | None, env: Mapping[str, str] | None,
-                 limit: int) -> CommandResult:
+def _command_result_with_bytes(command: Command, returncode: int | None, stdout: bytes | None,
+                               stderr: bytes | None, executed: bool, *,
+                               timed_out: bool = False,
+                               output_limited: bool = False) -> tuple[CommandResult, bytes, bytes]:
+    out, err = stdout or b"", stderr or b""
+    return (
+        CommandResult(command.argv, returncode, _decode(out), _decode(err), executed,
+                      timed_out, output_limited),
+        out,
+        err,
+    )
+
+
+def _run_bounded_with_bytes(command: Command, data: bytes | None, *, cwd: str | os.PathLike[str] | None,
+                            timeout: float | None, env: Mapping[str, str] | None,
+                            limit: int) -> tuple[CommandResult, bytes, bytes]:
     """Read two pipes concurrently with a shared byte cap; stop noisy children."""
     process = subprocess.Popen(
         command.argv, cwd=cwd, env=env, stdin=subprocess.PIPE if data is not None else None,
@@ -289,10 +305,13 @@ def _run_bounded(command: Command, data: bytes | None, *, cwd: str | os.PathLike
         process.wait()
     for worker in workers:
         worker.join()
-    return CommandResult(
-        command.argv, None if timed_out or limited.is_set() else process.returncode,
-        _decode(bytes(captured[0])), _decode(bytes(captured[1])),
-        True, timed_out, limited.is_set(),
+    return _command_result_with_bytes(
+        command,
+        None if timed_out or limited.is_set() else process.returncode,
+        bytes(captured[0]), bytes(captured[1]),
+        True,
+        timed_out=timed_out,
+        output_limited=limited.is_set(),
     )
 
 
@@ -310,6 +329,19 @@ def run_command(command: Command, *, cwd: str | os.PathLike[str] | None = None,
     process-tree cleanup are outside this contract. When max_output_bytes is set,
     stdout/stderr share a byte cap and the child is stopped on overflow.
     """
+    result, _, _ = _run_command_with_bytes(
+        command, cwd=cwd, timeout=timeout, dry_run=dry_run, env=env,
+        stdin=stdin, max_output_bytes=max_output_bytes,
+    )
+    return result
+
+
+def _run_command_with_bytes(command: Command, *, cwd: str | os.PathLike[str] | None = None,
+                            timeout: float | None = None, dry_run: bool = False,
+                            env: Mapping[str, str] | None = None,
+                            stdin: str | bytes | None = None,
+                            max_output_bytes: int | None = None) -> tuple[CommandResult, bytes, bytes]:
+    """Like run_command, but also return captured stdout/stderr as raw bytes for the CLI."""
     if timeout is not None and (not math.isfinite(timeout) or timeout <= 0):
         raise ValueError("timeout must be positive and finite")
     if stdin is not None and not isinstance(stdin, (str, bytes)):
@@ -318,18 +350,18 @@ def run_command(command: Command, *, cwd: str | os.PathLike[str] | None = None,
     if max_output_bytes is not None and (type(max_output_bytes) is not int or max_output_bytes < 0):
         raise ValueError("max_output_bytes must be a nonnegative integer or None")
     if dry_run:
-        return CommandResult(command.argv, None, "", "", False)
+        return _command_result_with_bytes(command, None, b"", b"", False)
     if max_output_bytes is not None:
-        return _run_bounded(command, data, cwd=cwd, timeout=timeout, env=env,
-                            limit=max_output_bytes)
+        return _run_bounded_with_bytes(
+            command, data, cwd=cwd, timeout=timeout, env=env, limit=max_output_bytes,
+        )
     try:
-        result = subprocess.run(command.argv, cwd=cwd, timeout=timeout, env=env,
-                                input=data, capture_output=True, shell=False, check=False)
+        completed = subprocess.run(command.argv, cwd=cwd, timeout=timeout, env=env,
+                                   input=data, capture_output=True, shell=False, check=False)
     except subprocess.TimeoutExpired as exc:
-        return CommandResult(command.argv, None, _decode(exc.stdout), _decode(exc.stderr),
-                             True, True)
-    return CommandResult(command.argv, result.returncode, _decode(result.stdout),
-                         _decode(result.stderr), True)
+        return _command_result_with_bytes(command, None, exc.stdout, exc.stderr, True, timed_out=True)
+    return _command_result_with_bytes(command, completed.returncode, completed.stdout,
+                                      completed.stderr, True)
 
 
 def render_output(value: Any, *, format: str = "text") -> str:
@@ -657,3 +689,166 @@ def build_env(extra: Mapping[str, str] | Sequence[str] | None = None, *,
         result[key] = value
 
     return result
+
+
+class _CliRequestError(Exception):
+    """Invalid stdin JSON or request fields (exit 2)."""
+
+
+_CLI_STDIN_MAX_BYTES = 4 * 1024 * 1024
+_RUN_REQUEST_KEYS = frozenset({"argv", "timeout", "cwd", "env", "input", "max_output", "dry_run"})
+
+
+def _reject_json_non_finite(constant: str) -> Any:
+    raise _CliRequestError("JSON must not contain NaN or Infinity")
+
+
+def _read_stdin_text() -> str:
+    raw = sys.stdin.buffer.read(_CLI_STDIN_MAX_BYTES + 1)
+    if len(raw) > _CLI_STDIN_MAX_BYTES:
+        raise _CliRequestError("stdin exceeds size limit")
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise _CliRequestError("stdin must be UTF-8") from exc
+
+
+def _command_result_cli_json(result: CommandResult, stdout_raw: bytes, stderr_raw: bytes) -> dict[str, Any]:
+    payload = asdict(result)
+    if not payload["output_limited"]:
+        del payload["output_limited"]
+    payload["stdout_b64"] = base64.standard_b64encode(stdout_raw).decode("ascii")
+    payload["stderr_b64"] = base64.standard_b64encode(stderr_raw).decode("ascii")
+    return payload
+
+
+def _parse_run_request(payload: Any) -> dict[str, Any]:
+    if not isinstance(payload, dict):
+        raise _CliRequestError("request must be a JSON object")
+    unknown = sorted(set(payload) - _RUN_REQUEST_KEYS)
+    if unknown:
+        raise _CliRequestError("unknown request keys: " + ", ".join(unknown))
+    if "argv" not in payload:
+        raise _CliRequestError("argv is required")
+    argv = payload["argv"]
+    if not isinstance(argv, list):
+        raise _CliRequestError("argv must be a JSON array")
+    try:
+        command = Command(tuple(argv))
+    except (TypeError, ValueError) as exc:
+        raise _CliRequestError(str(exc)) from exc
+    timeout = payload.get("timeout")
+    if timeout is not None:
+        if type(timeout) not in (int, float) or not math.isfinite(timeout) or timeout <= 0:
+            raise _CliRequestError("timeout must be a positive finite number")
+    cwd = payload.get("cwd")
+    if cwd is not None and not isinstance(cwd, str):
+        raise _CliRequestError("cwd must be a string")
+    env = payload.get("env")
+    env_map: dict[str, str] | None = None
+    if env is not None:
+        if not isinstance(env, dict):
+            raise _CliRequestError("env must be a JSON object")
+        try:
+            env_map = build_env(env, inherit=True)
+        except (TypeError, ValueError) as exc:
+            raise _CliRequestError(str(exc)) from exc
+    stdin = payload.get("input")
+    if stdin is not None and not isinstance(stdin, str):
+        raise _CliRequestError("input must be a string or null")
+    max_output = payload.get("max_output")
+    if max_output is not None and (type(max_output) is not int or max_output < 0):
+        raise _CliRequestError("max_output must be a nonnegative integer")
+    dry_run = payload.get("dry_run", False)
+    if type(dry_run) is not bool:
+        raise _CliRequestError("dry_run must be a boolean")
+    return {
+        "command": command,
+        "cwd": cwd,
+        "timeout": timeout,
+        "env": env_map,
+        "stdin": stdin,
+        "max_output_bytes": max_output,
+        "dry_run": dry_run,
+    }
+
+
+def _load_stdin_json() -> Any:
+    raw = _read_stdin_text()
+    if not raw.strip():
+        raise _CliRequestError("stdin must contain JSON")
+    try:
+        return json.loads(raw, parse_constant=_reject_json_non_finite)
+    except json.JSONDecodeError as exc:
+        raise _CliRequestError("invalid JSON: " + exc.msg) from exc
+
+
+def _cli_run() -> int:
+    request = _parse_run_request(_load_stdin_json())
+    try:
+        result, stdout_raw, stderr_raw = _run_command_with_bytes(
+            request["command"],
+            cwd=request["cwd"],
+            timeout=request["timeout"],
+            dry_run=request["dry_run"],
+            env=request["env"],
+            stdin=request["stdin"],
+            max_output_bytes=request["max_output_bytes"],
+        )
+    except OSError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
+    sys.stdout.write(
+        json.dumps(
+            _command_result_cli_json(result, stdout_raw, stderr_raw),
+            ensure_ascii=False,
+            allow_nan=False,
+            indent=2,
+        ) + "\n",
+    )
+    return 0
+
+
+def _cli_render(format: str) -> int:
+    payload = _load_stdin_json()
+    try:
+        sys.stdout.write(render_output(payload, format=format))
+    except ValueError as exc:
+        raise _CliRequestError(str(exc)) from exc
+    return 0
+
+
+def _main(argv: Sequence[str] | None = None) -> int:
+    parser = argparse.ArgumentParser(
+        prog="cli_args.py",
+        description="Machine-facing entry points for run_command and render_output.",
+        exit_on_error=False,
+    )
+    parser.add_argument("--version", action="version", version="%(prog)s " + __version__)
+    subparsers = parser.add_subparsers(dest="command", required=False)
+    subparsers.add_parser("run", help="run a command from a JSON request on stdin")
+    render_parser = subparsers.add_parser("render", help="render a JSON value from stdin")
+    render_parser.add_argument("--format", choices=("text", "json"), default="text")
+    try:
+        args = parser.parse_args(None if argv is None else list(argv))
+    except argparse.ArgumentError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    if args.command is None:
+        parser.print_usage(sys.stderr)
+        print("cli_args.py: error: command required (run or render)", file=sys.stderr)
+        return 2
+    try:
+        if args.command == "run":
+            return _cli_run()
+        return _cli_render(args.format)
+    except _CliRequestError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+    except Exception as exc:
+        print(str(exc) or exc.__class__.__name__, file=sys.stderr)
+        return 1
+
+
+if __name__ == "__main__":
+    raise SystemExit(_main())

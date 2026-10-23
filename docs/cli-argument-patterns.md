@@ -179,6 +179,7 @@ only the missing catalog entries and focused execution evidence are added. There
 | Docker `inspect --format ...`, Compose repeated `-f FILE` | Select image metadata / layer configuration using existing Docker grammar. | Existing Docker-real tests assert WorkingDir/environment and real Compose config services. No general template engine is added here. |
 | FFmpeg `-nostdin -hide_banner -loglevel error -f lavfi ... -f null -` | Run a bounded synthetic media probe without interactive stdin or an output artifact. | Existing container-real lavfi-to-null test; this is not evidence for all media formats/codecs. |
 | `cli_args` `node_command` / `run_node` / `node_or_command` | Keep Node entrypoints on the same argv contract as other CLIs: `[node, *node_flags, script, *args]`, opt-in auto-wrap for `.js`/`.cjs`/`.mjs`, explicit `node`/`CLI_ARGS_NODE` fail closed, Node 18+ probe. | Host-real: [tests/test_node_bridge.py](../tests/test_node_bridge.py) on Node 18 and latest in CI; Windows/macOS portability lane. |
+| `cli_args.cjs` `runCommand` / `render` | Inverse bridge: Node hosts call vendored `py_launch.cjs` → `cli_args.py run`/`render` (JSON stdin), no nested Node, `CLI_ARGS_PYTHON` explicit env, exit 2 → `CliArgsRequestError`. | [tests/node/cli_args.test.cjs](../tests/node/cli_args.test.cjs) in CI `node-runtime`; Python contract in [tests/test_cli_args_main.py](../tests/test_cli_args_main.py). |
 
 Origins:
 - [Current PR host tests](../tests/test_commands.py) already use curl configuration/proxy controls and pytest addopts override.

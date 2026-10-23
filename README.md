@@ -64,6 +64,27 @@ result = run_node("tools/probe.cjs", "--", "-flag", "", "日本 語", timeout=30
 command = node_or_command(["playwright.cjs", "test", "--list"], node_flags=["--no-warnings"])
 ```
 
+## Node.js から `cli_args.py` を呼ぶ
+
+Python 側の `run_command` / `render_output` を Node 18+ から使うときは、リポジトリ直下の `cli_args.cjs` を require します。実装は親リポジトリ `myon-bioinformatics` の共有ランチャー `vendor/py_launch.cjs` 経由で `cli_args.py run` / `render` を起動するだけで、Node から Node を起動しません。`shell: true` は使いません。
+
+| 探索 | 意味 |
+|---|---|
+| `opts.python` / `runCommand(..., { python })` | 明示指定（失敗時フォールバックなし） |
+| `CLI_ARGS_PYTHON` | 明示の環境変数（`py_launch` の `envVar`） |
+| `PYTHON` → `python3` → `python`（Windows は `py -3`） | 自動探索 |
+
+```javascript
+const {runCommand, render} = require("./cli_args.cjs");
+
+const result = runCommand(["git", "status", "--short"], {cwd: "/path/to/repo", timeout: 30});
+console.log(result.returncode, result.stdout, result.stdout_b64);
+
+const text = render({title: "日本語"}, "json");
+```
+
+CLI として直接実行する場合は `node cli_args.cjs run`（stdin に JSON）や `node cli_args.cjs render --format json`（stdin に値）と同じ契約です。不正な JSON や未知フィールドは Python が exit 2 で返し、ライブラリ API では `CliArgsRequestError` になります。インタプリタ起動失敗は `cli_args Python process failed: …` です。
+
 ## stdin入力を明示的に渡す（他repo横断で回収）
 
 `run_command(command, stdin=...)` は任意の **str（UTF-8へ符号化）またはbytes（無変換）** を一度だけ子プロセスに渡します。末尾の改行は追加しません。shellは使いません。`None` は入力指定なしです。
