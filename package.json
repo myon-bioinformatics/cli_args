@@ -1,0 +1,7 @@
+{
+  "name": "cli-args",
+  "private": true,
+  "engines": {
+    "node": ">=24"
+  }
+}
