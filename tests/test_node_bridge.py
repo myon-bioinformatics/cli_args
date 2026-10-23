@@ -1,5 +1,5 @@
 import json
-import stat
+import os
 import subprocess
 import textwrap
 from pathlib import Path
@@ -20,6 +20,37 @@ def _clear_node_probe_cache():
     reset_node_probe_cache()
     yield
     reset_node_probe_cache()
+
+
+def install_probe_stub(monkeypatch):
+    """Simulate ``node --version`` probes without platform-specific fake executables."""
+    real_run = subprocess.run
+    table: dict[str, dict[str, object]] = {}
+
+    def fake_run(argv, **kwargs):
+        if len(argv) >= 2 and argv[1] == "--version":
+            entry = table.get(argv[0])
+            if entry is not None:
+                if entry["hang"]:
+                    raise subprocess.TimeoutExpired(argv, kwargs.get("timeout", 5))
+                return subprocess.CompletedProcess(
+                    argv, int(entry["returncode"]), entry["stdout"], b"",
+                )
+        return real_run(argv, **kwargs)
+
+    monkeypatch.setattr(cli_args.subprocess, "run", fake_run)
+
+    def register(path, *, version="v22.0.0", returncode=0, hang=False):
+        key = str(path)
+        table[key] = {
+            "stdout": f"{version}\n".encode(),
+            "returncode": returncode,
+            "hang": hang,
+        }
+        Path(path).write_text("stub", encoding="utf-8")
+        return key
+
+    return register
 
 
 ECHO_CJS = textwrap.dedent(
@@ -55,21 +86,20 @@ def test_is_node_target_extensions():
     assert not is_node_target("readme.txt")
 
 
-def test_node_command_argv_order_and_passthrough(tmp_path):
-    node_bin = tmp_path / "node-bin"
-    node_bin.write_text("#!/bin/sh\nprintf 'v22.0.0\\n'\n", encoding="utf-8")
-    node_bin.chmod(node_bin.stat().st_mode | stat.S_IXUSR)
+def test_node_command_argv_order_and_passthrough(tmp_path, monkeypatch):
+    register = install_probe_stub(monkeypatch)
+    node_bin = register(tmp_path / "node-bin")
     command = node_command(
         "script.mjs",
         "--",
         "-leading",
         "",
         "日本 語",
-        node=str(node_bin),
+        node=node_bin,
         node_flags=("--import", "x"),
     )
     assert command.argv == (
-        str(node_bin), "--import", "x", "script.mjs", "--", "-leading", "", "日本 語",
+        node_bin, "--import", "x", "script.mjs", "--", "-leading", "", "日本 語",
     )
 
 
@@ -81,17 +111,16 @@ def test_node_or_command_opt_in():
     assert wrapped.argv[2:] == ("--flag", "value")
 
 
-def test_add_node_arguments_and_parser_integration(tmp_path):
-    node_bin = tmp_path / "node-bin"
-    node_bin.write_text("#!/bin/sh\nprintf 'v22.0.0\\n'\n", encoding="utf-8")
-    node_bin.chmod(node_bin.stat().st_mode | stat.S_IXUSR)
+def test_add_node_arguments_and_parser_integration(tmp_path, monkeypatch):
+    register = install_probe_stub(monkeypatch)
+    node_bin = register(tmp_path / "node-bin")
     parser = make_parser()
     add_node_arguments(parser)
-    args = parser.parse_args(["--node", str(node_bin), "--node-flag=--trace-warnings",
+    args = parser.parse_args(["--node", node_bin, "--node-flag=--trace-warnings",
                               "--node-flag=--no-warnings"])
     command = node_or_command(("tool.js", "run"), node=args.node, node_flags=args.node_flags)
     assert command.argv == (
-        str(node_bin), "--trace-warnings", "--no-warnings", "tool.js", "run",
+        node_bin, "--trace-warnings", "--no-warnings", "tool.js", "run",
     )
 
 
@@ -99,6 +128,7 @@ def test_resolve_node_explicit_missing_no_fallback(tmp_path, monkeypatch):
     missing = tmp_path / "missing-node"
     monkeypatch.delenv("CLI_ARGS_NODE", raising=False)
     monkeypatch.delenv("NODE", raising=False)
+    monkeypatch.setattr(cli_args.shutil, "which", lambda name: None)
     with pytest.raises(NodeNotFoundError, match="cli_args: node"):
         resolve_node(missing)
 
@@ -120,34 +150,33 @@ def test_resolve_node_rejects_cmd_wrapper(tmp_path, monkeypatch):
 
 
 def test_resolve_node_rejects_old_version(tmp_path, monkeypatch):
-    fake = tmp_path / "fake-node"
-    fake.write_text("#!/bin/sh\nprintf 'v16.9.0\\n'\n", encoding="utf-8")
-    fake.chmod(fake.stat().st_mode | stat.S_IXUSR)
+    register = install_probe_stub(monkeypatch)
+    fake = register(tmp_path / "fake-node", version="v16.9.0")
     monkeypatch.delenv("CLI_ARGS_NODE", raising=False)
     with pytest.raises(NodeNotFoundError, match="18"):
         resolve_node(fake)
 
 
 def test_resolve_node_probe_timeout(tmp_path, monkeypatch):
-    slow = tmp_path / "slow-node"
-    slow.write_text("#!/bin/sh\nsleep 10\n", encoding="utf-8")
-    slow.chmod(slow.stat().st_mode | stat.S_IXUSR)
+    register = install_probe_stub(monkeypatch)
+    slow = register(tmp_path / "slow-node", hang=True)
     monkeypatch.delenv("CLI_ARGS_NODE", raising=False)
     with pytest.raises(NodeNotFoundError, match="timed out"):
         resolve_node(slow)
 
 
 def test_resolve_node_discovery_order(monkeypatch, tmp_path):
-    primary = tmp_path / "primary-node"
-    primary.write_text("#!/bin/sh\nprintf 'v20.0.0\\n'\n", encoding="utf-8")
-    primary.chmod(primary.stat().st_mode | stat.S_IXUSR)
+    register = install_probe_stub(monkeypatch)
+    primary = register(tmp_path / "primary-node", version="v20.0.0")
     fallback = shutil_which_node()
     monkeypatch.delenv("CLI_ARGS_NODE", raising=False)
-    monkeypatch.setenv("NODE", str(primary))
-    assert resolve_node() == str(primary)
+    monkeypatch.setenv("NODE", primary)
+    monkeypatch.setattr(cli_args.shutil, "which", lambda name: None)
+    assert resolve_node() == primary
     reset_node_probe_cache()
     monkeypatch.delenv("NODE", raising=False)
-    assert resolve_node() == fallback
+    monkeypatch.setattr(cli_args.shutil, "which", lambda name: fallback if name == "node" else None)
+    assert os.path.normcase(resolve_node()) == os.path.normcase(fallback)
 
 
 def test_node_not_found_is_file_not_found():
@@ -203,19 +232,17 @@ def test_node_command_nul_rejected():
 
 
 def test_resolve_node_probe_runs_once(monkeypatch, tmp_path):
-    counter = tmp_path / "count-node"
-    counter.write_text(
-        "#!/bin/sh\nprintf 'v22.0.0\\n'\n",
-        encoding="utf-8",
-    )
-    counter.chmod(counter.stat().st_mode | stat.S_IXUSR)
+    register = install_probe_stub(monkeypatch)
+    counter = register(tmp_path / "count-node")
+    stub_run = cli_args.subprocess.run
     calls = {"n": 0}
 
-    def fake_run(argv, **kwargs):
-        calls["n"] += 1
-        return subprocess.CompletedProcess(argv, 0, b"v22.0.0\n", b"")
+    def counting_run(argv, **kwargs):
+        if len(argv) >= 2 and argv[1] == "--version" and argv[0] == counter:
+            calls["n"] += 1
+        return stub_run(argv, **kwargs)
 
-    monkeypatch.setattr(cli_args.subprocess, "run", fake_run)
-    assert resolve_node(counter) == str(counter)
-    assert resolve_node(counter) == str(counter)
+    monkeypatch.setattr(cli_args.subprocess, "run", counting_run)
+    assert resolve_node(counter) == counter
+    assert resolve_node(counter) == counter
     assert calls["n"] == 1
