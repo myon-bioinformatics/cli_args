@@ -18,7 +18,41 @@ def test_parent_workflow_references_use_reviewed_rollout_commit():
         lines = text.splitlines()
         for i, line in enumerate(lines):
             if re.fullmatch(r"\s+repository:\s*['\"]?" + re.escape(PARENT) + r"['\"]?\s*", line):
-                refs = [re.fullmatch(r"\s+ref:\s*['\"]?([^\s'\"]+)['\"]?\s*", item) for item in lines[i + 1:i + 12]]
-                pins.append(next((m.group(1) for m in refs if m), None))
+                refs = [re.fullmatch(r"\s+ref:\s*(.+?)\s*$", item) for item in lines[i + 1:i + 12]]
+                ref_match = next((m for m in refs if m), None)
+                if ref_match is None:
+                    pins.append(None)
+                    continue
+                ref = ref_match.group(1).strip().strip("'\"")
+                if "${{" in ref:
+                    continue
+                pins.append(ref)
     assert pins, "shared parent references must remain observable"
     assert set(pins) == {PARENT_WORKFLOW_PIN}, pins
+
+
+def test_vendor_locked_job_resolves_parent_main_at_runtime():
+    path = ROOT / ".github/workflows/ci.yml"
+    text = path.read_text(encoding="utf-8")
+    assert PARENT_WORKFLOW_PIN in text
+    assert "parent_vendor_tools_resolve.py" in text
+    assert "GITHUB_TOKEN" in text
+    assert "steps.parent-vendor-tools.outputs.sha" in text
+    script = (ROOT / "scripts/parent_vendor_tools_resolve.py").read_text(encoding="utf-8")
+    assert "api.github.com/repos/" in script
+    assert "ls-remote" in script and "--symref" in script
+    assert "638801160" in script
+    assert "shell=True" not in script
+
+
+def test_vendor_locked_job_runs_network_parent_vendor_resolve_regressions():
+    path = ROOT / ".github/workflows/ci.yml"
+    text = path.read_text(encoding="utf-8")
+    assert "Network parent vendor tools resolve regressions" in text
+    assert (
+        "python -m pytest -q -m network tests/test_parent_vendor_tools_resolve.py"
+        in text
+    )
+    marker = "Network parent vendor tools resolve regressions"
+    block = text.split(marker, 1)[1].split("- name:", 1)[0]
+    assert "GITHUB_TOKEN: ${{ github.token }}" in block
