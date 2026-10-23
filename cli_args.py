@@ -6,6 +6,7 @@ External tools keep their own option semantics; pass their argv unchanged.
 from __future__ import annotations
 
 import argparse
+import base64
 from difflib import get_close_matches
 from collections.abc import Sequence as SequenceABC
 from dataclasses import asdict, dataclass, field
@@ -21,17 +22,7 @@ from threading import Event, Lock, Thread
 from typing import Any, Iterable, Mapping, Sequence, TextIO
 
 
-def _read_project_version() -> str:
-    pyproject = Path(__file__).resolve().with_name("pyproject.toml")
-    if pyproject.is_file():
-        for line in pyproject.read_text(encoding="utf-8").splitlines():
-            stripped = line.strip()
-            if stripped.startswith("version = "):
-                return stripped.split("=", 1)[1].strip().strip('"').strip("'")
-    return "0.0.0"
-
-
-__version__ = _read_project_version()
+__version__ = "0.0.0"
 
 __all__ = [
     "Argument", "make_parser", "parse_args", "add_output_arguments",
@@ -222,10 +213,21 @@ class CommandResult:
     executed: bool
     timed_out: bool = False
     output_limited: bool = False
+    stdout_bytes: bytes = field(default=b"", repr=False, compare=False)
+    stderr_bytes: bytes = field(default=b"", repr=False, compare=False)
 
 
 def _decode(value: bytes | None) -> str:
     return (value or b"").decode("utf-8", errors="replace")
+
+
+def _command_result(command: Command, returncode: int | None, stdout: bytes | None, stderr: bytes | None,
+                    executed: bool, *, timed_out: bool = False, output_limited: bool = False) -> CommandResult:
+    out, err = stdout or b"", stderr or b""
+    return CommandResult(
+        command.argv, returncode, _decode(out), _decode(err), executed,
+        timed_out, output_limited, out, err,
+    )
 
 
 def _run_bounded(command: Command, data: bytes | None, *, cwd: str | os.PathLike[str] | None,
@@ -294,10 +296,13 @@ def _run_bounded(command: Command, data: bytes | None, *, cwd: str | os.PathLike
         process.wait()
     for worker in workers:
         worker.join()
-    return CommandResult(
-        command.argv, None if timed_out or limited.is_set() else process.returncode,
-        _decode(bytes(captured[0])), _decode(bytes(captured[1])),
-        True, timed_out, limited.is_set(),
+    return _command_result(
+        command,
+        None if timed_out or limited.is_set() else process.returncode,
+        bytes(captured[0]), bytes(captured[1]),
+        True,
+        timed_out=timed_out,
+        output_limited=limited.is_set(),
     )
 
 
@@ -323,7 +328,7 @@ def run_command(command: Command, *, cwd: str | os.PathLike[str] | None = None,
     if max_output_bytes is not None and (type(max_output_bytes) is not int or max_output_bytes < 0):
         raise ValueError("max_output_bytes must be a nonnegative integer or None")
     if dry_run:
-        return CommandResult(command.argv, None, "", "", False)
+        return _command_result(command, None, b"", b"", False)
     if max_output_bytes is not None:
         return _run_bounded(command, data, cwd=cwd, timeout=timeout, env=env,
                             limit=max_output_bytes)
@@ -331,10 +336,8 @@ def run_command(command: Command, *, cwd: str | os.PathLike[str] | None = None,
         result = subprocess.run(command.argv, cwd=cwd, timeout=timeout, env=env,
                                 input=data, capture_output=True, shell=False, check=False)
     except subprocess.TimeoutExpired as exc:
-        return CommandResult(command.argv, None, _decode(exc.stdout), _decode(exc.stderr),
-                             True, True)
-    return CommandResult(command.argv, result.returncode, _decode(result.stdout),
-                         _decode(result.stderr), True)
+        return _command_result(command, None, exc.stdout, exc.stderr, True, timed_out=True)
+    return _command_result(command, result.returncode, result.stdout, result.stderr, True)
 
 
 def render_output(value: Any, *, format: str = "text") -> str:
@@ -344,6 +347,8 @@ def render_output(value: Any, *, format: str = "text") -> str:
         if format == "text":
             return value.stdout if value.executed else json.dumps(list(value.argv), ensure_ascii=False) + "\n"
         value = asdict(value)
+        value.pop("stdout_bytes", None)
+        value.pop("stderr_bytes", None)
         if not value["output_limited"]:
             del value["output_limited"]  # preserve the existing JSON contract
     if format == "json":
@@ -536,7 +541,33 @@ class _CliRequestError(Exception):
     """Invalid stdin JSON or request fields (exit 2)."""
 
 
+_CLI_STDIN_MAX_BYTES = 4 * 1024 * 1024
 _RUN_REQUEST_KEYS = frozenset({"argv", "timeout", "cwd", "env", "input", "max_output", "dry_run"})
+
+
+def _reject_json_non_finite(constant: str) -> Any:
+    raise _CliRequestError("JSON must not contain NaN or Infinity")
+
+
+def _read_stdin_text() -> str:
+    raw = sys.stdin.buffer.read(_CLI_STDIN_MAX_BYTES + 1)
+    if len(raw) > _CLI_STDIN_MAX_BYTES:
+        raise _CliRequestError("stdin exceeds size limit")
+    try:
+        return raw.decode("utf-8")
+    except UnicodeDecodeError as exc:
+        raise _CliRequestError("stdin must be UTF-8") from exc
+
+
+def _command_result_cli_json(result: CommandResult) -> dict[str, Any]:
+    payload = asdict(result)
+    payload.pop("stdout_bytes", None)
+    payload.pop("stderr_bytes", None)
+    if not payload["output_limited"]:
+        del payload["output_limited"]
+    payload["stdout_b64"] = base64.standard_b64encode(result.stdout_bytes).decode("ascii")
+    payload["stderr_b64"] = base64.standard_b64encode(result.stderr_bytes).decode("ascii")
+    return payload
 
 
 def _parse_run_request(payload: Any) -> dict[str, Any]:
@@ -591,11 +622,11 @@ def _parse_run_request(payload: Any) -> dict[str, Any]:
 
 
 def _load_stdin_json() -> Any:
-    raw = sys.stdin.read()
+    raw = _read_stdin_text()
     if not raw.strip():
         raise _CliRequestError("stdin must contain JSON")
     try:
-        return json.loads(raw)
+        return json.loads(raw, parse_constant=_reject_json_non_finite)
     except json.JSONDecodeError as exc:
         raise _CliRequestError("invalid JSON: " + exc.msg) from exc
 
@@ -615,13 +646,18 @@ def _cli_run() -> int:
     except OSError as exc:
         print(str(exc), file=sys.stderr)
         return 1
-    sys.stdout.write(render_output(result, format="json"))
+    sys.stdout.write(
+        json.dumps(_command_result_cli_json(result), ensure_ascii=False, allow_nan=False, indent=2) + "\n",
+    )
     return 0
 
 
 def _cli_render(format: str) -> int:
     payload = _load_stdin_json()
-    sys.stdout.write(render_output(payload, format=format))
+    try:
+        sys.stdout.write(render_output(payload, format=format))
+    except ValueError as exc:
+        raise _CliRequestError(str(exc)) from exc
     return 0
 
 
