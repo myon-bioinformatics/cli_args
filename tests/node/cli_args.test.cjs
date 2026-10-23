@@ -10,6 +10,10 @@ const {test} = require("node:test");
 const ROOT = path.join(__dirname, "..", "..");
 const PYTHON = process.env.PYTHON || "python3";
 
+function normalizeNewlines(text) {
+  return String(text).replace(/\r\n/g, "\n");
+}
+
 function lockEntry() {
   const lock = JSON.parse(fs.readFileSync(path.join(ROOT, "vendor.lock.json"), "utf8"));
   const entry = lock.files.find((item) => item.destination === "vendor/py_launch.cjs");
@@ -17,25 +21,28 @@ function lockEntry() {
   return entry;
 }
 
-function writeFakePython(dir) {
-  const marker = path.join(dir, "marker.txt");
-  const fake = path.join(dir, "fake-python");
-  fs.writeFileSync(
-    fake,
-    `#!/usr/bin/env python3
-import sys
-marker = ${JSON.stringify(marker)}
-if "-c" in sys.argv:
-    i = sys.argv.index("-c")
-    if i + 1 < len(sys.argv) and "version_info" in sys.argv[i + 1]:
-        print("3.12")
-        raise SystemExit(0)
-open(marker, "w", encoding="utf-8").write("ran")
-raise SystemExit(0)
-`,
-    {encoding: "utf8", mode: 0o755},
-  );
-  return {fake, marker};
+function resolvedPythonExecutable() {
+  const result = spawnSync(PYTHON, ["-c", "import sys; print(sys.executable)"], {encoding: "utf8"});
+  assert.equal(result.status, 0, result.stderr);
+  return result.stdout.trim();
+}
+
+function withCliArgsPython(value, fn) {
+  const prior = process.env.CLI_ARGS_PYTHON;
+  if (value === undefined) {
+    delete process.env.CLI_ARGS_PYTHON;
+  } else {
+    process.env.CLI_ARGS_PYTHON = value;
+  }
+  try {
+    fn();
+  } finally {
+    if (prior === undefined) {
+      delete process.env.CLI_ARGS_PYTHON;
+    } else {
+      process.env.CLI_ARGS_PYTHON = prior;
+    }
+  }
 }
 
 test("vendored py_launch.cjs matches vendor.lock.json", () => {
@@ -66,9 +73,28 @@ test("runCommand roundtrip and child exit code", () => {
 
 test("runCommand preserves Japanese output", () => {
   const {runCommand} = require(path.join(ROOT, "cli_args.cjs"));
-  const body = runCommand([PYTHON, "-S", "-c", "print('日本語')"]);
-  assert.equal(body.stdout, "日本語\n");
+  const body = runCommand([PYTHON, "-S", "-c", "print('日本語')"], {
+    env: {PYTHONUTF8: "1", PYTHONIOENCODING: "utf-8"},
+  });
+  assert.equal(normalizeNewlines(body.stdout), "日本語\n");
   assert.equal(body.returncode, 0);
+});
+
+test("runCommand does not inject PYTHONUTF8 into wrapped env", () => {
+  const {runCommand} = require(path.join(ROOT, "cli_args.cjs"));
+  const code = [
+    "import os, json",
+    "print(json.dumps({",
+    "  'PYTHONUTF8': os.environ.get('PYTHONUTF8'),",
+    "  'PYTHONIOENCODING': os.environ.get('PYTHONIOENCODING'),",
+    "}))",
+  ].join("\n");
+  const body = runCommand([PYTHON, "-S", "-c", code], {
+    env: {PYTHONUTF8: "0", PYTHONIOENCODING: "cp1252"},
+  });
+  const seen = JSON.parse(normalizeNewlines(body.stdout));
+  assert.equal(seen.PYTHONUTF8, "0");
+  assert.equal(seen.PYTHONIOENCODING, "cp1252");
 });
 
 test("render text and json", () => {
@@ -78,17 +104,21 @@ test("render text and json", () => {
   assert.deepEqual(JSON.parse(render(value, "json")), value);
 });
 
-test("CLI_ARGS_PYTHON is used when set explicitly", (t) => {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cli-args-fake-py-"));
-  t.after(() => fs.rmSync(dir, {recursive: true, force: true}));
-  const {fake, marker} = writeFakePython(dir);
+test("CLI_ARGS_PYTHON env is honored without silent fallback", () => {
   const {runCommand} = require(path.join(ROOT, "cli_args.cjs"));
-  try {
-    runCommand([PYTHON, "-S", "-c", "print(1)"], {python: fake});
-  } catch {
-    // interpreter ran even if the script failed afterward
-  }
-  assert.equal(fs.readFileSync(marker, "utf8"), "ran");
+  const resolved = resolvedPythonExecutable();
+  const missing = path.join(os.tmpdir(), `cli-args-missing-python-${process.pid}`);
+  withCliArgsPython(missing, () => {
+    assert.throws(
+      () => runCommand([PYTHON, "-S", "-c", "print(1)"]),
+      (err) => err.message.startsWith("cli_args Python process failed: "),
+    );
+  });
+  withCliArgsPython(resolved, () => {
+    const body = runCommand([PYTHON, "-S", "-c", "print(9)"]);
+    assert.equal(body.returncode, 0);
+    assert.equal(normalizeNewlines(body.stdout), "9\n");
+  });
 });
 
 test("invalid run request maps Python exit 2 to CliArgsRequestError", () => {
@@ -113,4 +143,109 @@ test("cli_args.cjs CLI exits 2 when CLI_ARGS_PYTHON is unusable", () => {
     input: JSON.stringify({argv: [PYTHON, "-S", "-c", "print(1)"]}),
   });
   assert.equal(result.status, 2);
+});
+
+test("runCommand default max_output is 4 MiB with output_limited false", () => {
+  const {runCommand, CLI_RUN_DEFAULT_MAX_OUTPUT_BYTES, cliHostMaxBufferBytes, CLI_RUN_RESPONSE_MAX_BYTES} =
+    require(path.join(ROOT, "cli_args.cjs"));
+  const limit = CLI_RUN_DEFAULT_MAX_OUTPUT_BYTES;
+  const code = `import sys; sys.stdout.buffer.write(b"z" * ${limit})`;
+  const body = runCommand([PYTHON, "-S", "-c", code]);
+  assert.equal(body.output_limited, false);
+  assert.equal(Buffer.from(body.stdout_b64, "base64").length, limit);
+  assert.equal(cliHostMaxBufferBytes(CLI_RUN_RESPONSE_MAX_BYTES), CLI_RUN_RESPONSE_MAX_BYTES + 512);
+});
+
+test("runCommand max_output exactly at limit", () => {
+  const {runCommand} = require(path.join(ROOT, "cli_args.cjs"));
+  const limit = 512;
+  const code = `import sys; sys.stdout.buffer.write(bytes(i % 256 for i in range(${limit})))`;
+  const body = runCommand([PYTHON, "-S", "-c", code], {max_output: limit});
+  const expected = Buffer.from(Array.from({length: limit}, (_, i) => i % 256));
+  assert.equal(body.output_limited, false);
+  assert.equal(Buffer.from(body.stdout_b64, "base64").compare(expected), 0);
+});
+
+test("runCommand max_output boundary under and over", () => {
+  const {runCommand} = require(path.join(ROOT, "cli_args.cjs"));
+  const limit = 48 * 1024;
+  const under = limit - 1;
+  const ok = runCommand(
+    [PYTHON, "-S", "-c", `import sys; sys.stdout.buffer.write(b"x" * ${under})`],
+    {max_output: limit},
+  );
+  assert.equal(ok.output_limited, false);
+  assert.equal(Buffer.from(ok.stdout_b64, "base64").length, under);
+
+  const limited = runCommand(
+    [PYTHON, "-S", "-c", `import sys; sys.stdout.buffer.write(b"x" * ${limit + 1})`],
+    {max_output: limit},
+  );
+  assert.equal(limited.output_limited, true);
+  assert.equal(limited.returncode, null);
+  assert.equal(Buffer.from(limited.stdout_b64, "base64").length, limit);
+});
+
+test("runCommand binary control bytes under response cap", () => {
+  const {runCommand} = require(path.join(ROOT, "cli_args.cjs"));
+  const limit = 96 * 1024;
+  const code = `import sys; sys.stdout.buffer.write(bytes(i % 256 for i in range(${limit})))`;
+  const body = runCommand([PYTHON, "-S", "-c", code], {max_output: limit});
+  assert.equal(body.output_limited, false);
+  assert.equal(Buffer.from(body.stdout_b64, "base64").length, limit);
+});
+
+test("runCommand long argv with small max_output", () => {
+  const {runCommand} = require(path.join(ROOT, "cli_args.cjs"));
+  const longArg = "y".repeat(20000);
+  const body = runCommand(
+    [PYTHON, "-S", "-c", "import sys; sys.stdout.buffer.write(b'b' * 900)", longArg],
+    {max_output: 1000},
+  );
+  assert.equal(body.argv.at(-1), longArg);
+  assert.equal(body.output_limited, false);
+  assert.equal(Buffer.from(body.stdout_b64, "base64").length, 900);
+});
+
+test("render deep nesting stays within response cap", () => {
+  const {render} = require(path.join(ROOT, "cli_args.cjs"));
+  let value = Array.from({length: 3000}, (_, i) => i);
+  for (let depth = 0; depth < 200; depth += 1) {
+    value = [value];
+  }
+  const out = render(value, "json");
+  assert.ok(out.length > 500_000);
+  assert.deepEqual(JSON.parse(out), value);
+});
+
+test("runCommand rejects stdin larger than CLI_STDIN_MAX_BYTES", () => {
+  const {runCommand, CliArgsRequestError, CLI_STDIN_MAX_BYTES, STDIN_EXCEEDS_MSG} = require(path.join(
+    ROOT,
+    "cli_args.cjs",
+  ));
+  const padding = "a".repeat(CLI_STDIN_MAX_BYTES);
+  assert.throws(
+    () => runCommand([PYTHON, "-S", "-c", "print(1)", padding]),
+    (err) => err instanceof CliArgsRequestError && err.message === STDIN_EXCEEDS_MSG,
+  );
+});
+
+test("render rejects stdin larger than CLI_STDIN_MAX_BYTES", () => {
+  const {render, CliArgsRequestError, STDIN_EXCEEDS_MSG} = require(path.join(ROOT, "cli_args.cjs"));
+  const huge = {data: "x".repeat(4 * 1024 * 1024 + 64)};
+  assert.throws(
+    () => render(huge, "json"),
+    (err) => err instanceof CliArgsRequestError && err.message === STDIN_EXCEEDS_MSG,
+  );
+});
+
+test("runCommand rejects max_output above CLI_RUN_MAX_OUTPUT_BYTES", () => {
+  const {runCommand, CliArgsRequestError, CLI_RUN_MAX_OUTPUT_BYTES} = require(path.join(
+    ROOT,
+    "cli_args.cjs",
+  ));
+  assert.throws(
+    () => runCommand([PYTHON, "-S", "-c", "print(1)"], {max_output: CLI_RUN_MAX_OUTPUT_BYTES + 1}),
+    (err) => err instanceof CliArgsRequestError && /max_output exceeds limit/.test(err.message),
+  );
 });

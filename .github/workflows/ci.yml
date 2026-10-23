@@ -218,7 +218,8 @@ jobs:
           uv sync --locked --python "$(python -c 'import sys; print(sys.executable)')"
           python -c "import os; from pathlib import Path; print(Path('.venv').resolve() / ('Scripts' if os.name == 'nt' else 'bin'))" >> "$GITHUB_PATH"
       - run: python -S -c "import cli_args; assert cli_args.__all__"
-      - run: python -m pytest -q -m "not network" -ra --tb=short tests/test_cli_args.py tests/test_stdlib_commands.py tests/test_stdlib_functions.py tests/test_orchestration.py tests/test_observation_surface.py tests/test_option_suggestions.py tests/test_node_bridge.py --junitxml=test-results/core-${{ matrix.os }}.xml
+      - run: python -m pytest -q -m "not network" -ra --tb=short tests/test_cli_args.py tests/test_cli_args_main.py tests/test_stdlib_commands.py tests/test_stdlib_functions.py tests/test_orchestration.py tests/test_observation_surface.py tests/test_option_suggestions.py tests/test_node_bridge.py --junitxml=test-results/core-${{ matrix.os }}.xml
+      - run: node --test tests/node/cli_args.test.cjs
       - uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         if: always()
         with:

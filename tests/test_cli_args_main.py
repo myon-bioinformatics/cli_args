@@ -1,12 +1,15 @@
 import base64
+import contextlib
 import dataclasses
 import io
 import json
+import os
 import re
 import subprocess
 import sys
 from dataclasses import asdict, fields
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -44,12 +47,21 @@ def test_run_command_asdict_is_json_serializable():
 
 
 def invoke(*argv: str, stdin: str | bytes = "") -> subprocess.CompletedProcess[str]:
-    return subprocess.run(
+    """Run cli_args.py; decode captured stdout/stderr as UTF-8 (CLI writes stdout.buffer)."""
+    input_bytes = stdin.encode("utf-8") if isinstance(stdin, str) else stdin
+    env = {**os.environ, "PYTHONIOENCODING": "utf-8"}
+    completed = subprocess.run(
         [sys.executable, "-S", str(CLI), *argv],
-        input=stdin,
+        input=input_bytes,
         capture_output=True,
-        text=isinstance(stdin, str),
         cwd=ROOT,
+        env=env,
+    )
+    return subprocess.CompletedProcess(
+        args=completed.args,
+        returncode=completed.returncode,
+        stdout=completed.stdout.decode("utf-8"),
+        stderr=completed.stderr.decode("utf-8"),
     )
 
 
@@ -66,6 +78,7 @@ def test_version_on_standalone_copy(tmp_path: Path):
         [sys.executable, "-S", str(standalone), "--version"],
         capture_output=True,
         text=True,
+        encoding="utf-8",
     )
     assert proc.returncode == 0
     assert proc.stdout.strip() == f"cli_args.py {cli_args.__version__}"
@@ -81,6 +94,7 @@ def test_run_json_roundtrip_and_child_exit_code_on_stdout():
     body = json.loads(proc.stdout)
     assert body["returncode"] == 6
     assert body["executed"] is True
+    assert body["output_limited"] is False
     assert "stdout_b64" in body and "stderr_b64" in body
 
 
@@ -91,6 +105,30 @@ def test_run_wrapper_zero_even_when_child_fails():
     )
     assert proc.returncode == 0
     assert json.loads(proc.stdout)["returncode"] == 3
+
+
+def test_run_env_not_altered_by_bridge_defaults():
+    code = (
+        "import os, json; "
+        "print(json.dumps({"
+        "'PYTHONUTF8': os.environ.get('PYTHONUTF8'), "
+        "'PYTHONIOENCODING': os.environ.get('PYTHONIOENCODING')"
+        "}))"
+    )
+    proc = invoke(
+        "run",
+        stdin=json.dumps(
+            {
+                "argv": [sys.executable, "-S", "-c", code],
+                "env": {"PYTHONUTF8": "0", "PYTHONIOENCODING": "cp1252"},
+            },
+        ),
+    )
+    assert proc.returncode == 0
+    body = json.loads(proc.stdout)
+    seen = json.loads(body["stdout"].strip())
+    assert seen["PYTHONUTF8"] == "0"
+    assert seen["PYTHONIOENCODING"] == "cp1252"
 
 
 def test_run_japanese_argv_and_output():
@@ -105,8 +143,9 @@ def test_run_japanese_argv_and_output():
     proc = invoke("run", stdin=json.dumps(payload, ensure_ascii=False))
     assert proc.returncode == 0
     body = json.loads(proc.stdout)
-    assert body["stdout"] == "日本語\n"
-    assert base64.b64decode(body["stdout_b64"]) == "日本語\n".encode("utf-8")
+    stdout_raw = base64.b64decode(body["stdout_b64"])
+    assert stdout_raw.replace(b"\r\n", b"\n") == "日本語\n".encode("utf-8")
+    assert body["stdout"].replace("\r\n", "\n") == "日本語\n"
     assert body["returncode"] == 0
 
 
@@ -253,5 +292,214 @@ def test_import_main_has_no_side_effects():
         cwd=ROOT,
         capture_output=True,
         text=True,
+        encoding="utf-8",
     )
     assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
+
+
+def test_main_render_text_with_redirect_stdout():
+    value = {"title": "日本語", "n": 1}
+    capture = io.StringIO()
+    old_stdin = sys.stdin
+    sys.stdin = io.TextIOWrapper(
+        io.BytesIO(json.dumps(value).encode("utf-8")),
+        encoding="utf-8",
+    )
+    try:
+        with contextlib.redirect_stdout(capture):
+            assert cli_args._main(["render", "--format", "text"]) == 0
+    finally:
+        sys.stdin = old_stdin
+    assert "日本語" in capture.getvalue()
+
+
+def test_cli_host_max_buffer_bytes_adds_margin():
+    cap = cli_args.CLI_RUN_RESPONSE_MAX_BYTES
+    assert cli_args.cli_host_max_buffer_bytes(cap) == cap + cli_args.CLI_HOST_RESPONSE_MARGIN_BYTES
+
+
+def test_emit_cli_stdout_bytes_writes_measured_utf8(monkeypatch):
+    captured: list[bytes] = []
+
+    class _Buffer:
+        def write(self, data: bytes) -> int:
+            captured.append(data)
+            return len(data)
+
+        def flush(self) -> None:
+            return None
+
+    class _FakeStdout:
+        buffer = _Buffer()
+
+    monkeypatch.setattr(sys, "stdout", _FakeStdout())
+    payload = "日本語\n\x01\xff"
+    cli_args._emit_cli_stdout(payload, None)
+    assert captured == [payload.encode("utf-8")]
+
+
+def test_cli_render_stdout_bytes_match_utf8_on_pipe():
+    value = {"text": "日本語\nsecond", "n": 1}
+    proc = subprocess.run(
+        [sys.executable, "-S", str(CLI), "render", "--format", "json"],
+        input=json.dumps(value, ensure_ascii=False).encode("utf-8"),
+        capture_output=True,
+        cwd=ROOT,
+    )
+    assert proc.returncode == 0
+    expected = (json.dumps(value, ensure_ascii=False, indent=2) + "\n").encode("utf-8")
+    assert proc.stdout == expected
+
+
+def test_run_max_output_boundary_under_and_over():
+    limit = 64 * 1024
+    under = limit - 1
+    over = limit + 1
+    code_under = (
+        "import sys; sys.stdout.buffer.write(b'x' * "
+        f"{under}); sys.stderr.buffer.write(b'y')"
+    )
+    proc_under = invoke(
+        "run",
+        stdin=json.dumps(
+            {"argv": [sys.executable, "-S", "-c", code_under], "max_output": limit},
+        ),
+    )
+    assert proc_under.returncode == 0
+    body_under = json.loads(proc_under.stdout)
+    assert body_under["output_limited"] is False
+    assert len(base64.b64decode(body_under["stdout_b64"])) == under
+    assert len(base64.b64decode(body_under["stderr_b64"])) == 1
+
+    code_over = f"import sys; sys.stdout.buffer.write(b'x' * {over})"
+    proc_over = invoke(
+        "run",
+        stdin=json.dumps(
+            {"argv": [sys.executable, "-S", "-c", code_over], "max_output": limit},
+        ),
+    )
+    assert proc_over.returncode == 0
+    body_over = json.loads(proc_over.stdout)
+    assert body_over["output_limited"] is True
+    assert body_over["returncode"] is None
+    assert len(base64.b64decode(body_over["stdout_b64"])) == limit
+
+
+def test_run_max_output_exactly_at_limit_binary():
+    limit = 512
+    pattern = bytes((i % 256 for i in range(32)))
+    repeats = limit // len(pattern)
+    extra = limit - repeats * len(pattern)
+    blob = pattern * repeats + pattern[:extra]
+    code = "import sys; sys.stdout.buffer.write(" + repr(blob) + ")"
+    proc = invoke(
+        "run",
+        stdin=json.dumps(
+            {
+                "argv": [sys.executable, "-S", "-c", code],
+                "max_output": limit,
+                "response_max_bytes": cli_args.CLI_RUN_RESPONSE_MAX_BYTES,
+            },
+        ),
+    )
+    assert proc.returncode == 0
+    body = json.loads(proc.stdout)
+    assert body["output_limited"] is False
+    assert base64.b64decode(body["stdout_b64"]) == blob
+
+
+def test_run_binary_control_bytes_under_response_cap():
+    limit = 128 * 1024
+    code = f"import sys; sys.stdout.buffer.write(bytes(i % 256 for i in range({limit})))"
+    proc = invoke(
+        "run",
+        stdin=json.dumps(
+            {
+                "argv": [sys.executable, "-S", "-c", code],
+                "max_output": limit,
+                "response_max_bytes": cli_args.CLI_RUN_RESPONSE_MAX_BYTES,
+            },
+        ),
+    )
+    assert proc.returncode == 0
+    body = json.loads(proc.stdout)
+    assert body["output_limited"] is False
+    assert len(base64.b64decode(body["stdout_b64"])) == limit
+
+
+def test_run_response_max_bytes_rejects_oversized_json():
+    proc = invoke(
+        "run",
+        stdin=json.dumps(
+            {
+                "argv": [sys.executable, "-S", "-c", "import sys; sys.stdout.write('x' * 200)"],
+                "response_max_bytes": 64,
+            },
+        ),
+    )
+    assert proc.returncode == 1
+    assert "response exceeds response_max_bytes" in proc.stderr
+    assert proc.stdout == ""
+
+
+def test_run_long_argv_with_small_max_output_and_response_cap():
+    long_arg = "z" * 20000
+    proc = invoke(
+        "run",
+        stdin=json.dumps(
+            {
+                "argv": [
+                    sys.executable,
+                    "-S",
+                    "-c",
+                    "import sys; sys.stdout.buffer.write(b'a' * 900)",
+                    long_arg,
+                ],
+                "max_output": 1000,
+                "response_max_bytes": cli_args.CLI_RUN_RESPONSE_MAX_BYTES,
+            },
+        ),
+    )
+    assert proc.returncode == 0
+    body = json.loads(proc.stdout)
+    assert body["argv"][-1] == long_arg
+    assert body["output_limited"] is False
+    assert len(base64.b64decode(body["stdout_b64"])) == 900
+
+
+def _deep_nested_array(depth: int, width: int) -> list[Any]:
+    value: Any = list(range(width))
+    for _ in range(depth):
+        value = [value]
+    return value
+
+
+def test_render_deep_nesting_response_cap_boundary():
+    value = _deep_nested_array(200, 3000)
+    stdin = json.dumps(value)
+    ok_proc = invoke("render", "--format", "json", stdin=stdin)
+    assert ok_proc.returncode == 0
+    rendered_len = len(ok_proc.stdout.encode("utf-8"))
+    assert rendered_len > 500_000
+
+    over_proc = invoke(
+        "render",
+        "--format",
+        "json",
+        "--response-max-bytes",
+        str(rendered_len - 1),
+        stdin=stdin,
+    )
+    assert over_proc.returncode == 1
+    assert "response exceeds response_max_bytes" in over_proc.stderr
+
+    at_proc = invoke(
+        "render",
+        "--format",
+        "json",
+        "--response-max-bytes",
+        str(rendered_len),
+        stdin=stdin,
+    )
+    assert at_proc.returncode == 0
+    assert at_proc.stdout == ok_proc.stdout
