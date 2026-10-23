@@ -116,7 +116,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        node: ['18', 'latest']
+        node: ['24', 'latest']
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-python@5fda3b95a4ea91299a34e894583c3862153e4b97 # v7.0.0
@@ -284,7 +284,7 @@ jobs:
     uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-junit-identity.yml@2192ff22acafdd09e80ac722df91ee937aaedd5e
     with:
       commit-sha: ${{ github.event.pull_request.head.sha || github.sha }}
-      expected-reports: '["junit-py3.11/pytest-3.11.xml","junit-py3.12/pytest-3.12.xml","junit-py3.14/pytest-3.14.xml","junit-node-18/node-18.xml","junit-node-latest/node-latest.xml","junit-docker-integration/docker-integration.xml","junit-container-real/container-real.xml","junit-core-windows/core-windows.xml","junit-core-macos/core-macos.xml"]'
+      expected-reports: '["junit-py3.11/pytest-3.11.xml","junit-py3.12/pytest-3.12.xml","junit-py3.14/pytest-3.14.xml","junit-node-24/node-24.xml","junit-node-latest/node-latest.xml","junit-docker-integration/docker-integration.xml","junit-container-real/container-real.xml","junit-core-windows/core-windows.xml","junit-core-macos/core-macos.xml"]'
       artifact-pattern: "junit-*"
       output-artifact: failure-identity
 

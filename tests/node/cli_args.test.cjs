@@ -239,6 +239,26 @@ test("render rejects stdin larger than CLI_STDIN_MAX_BYTES", () => {
   );
 });
 
+test("assertNodeFloor rejects Node 22 and accepts Node 24", () => {
+  const {assertNodeFloor, NODE_MIN_MAJOR} = require(path.join(ROOT, "cli_args.cjs"));
+  assert.equal(NODE_MIN_MAJOR, 24);
+  assert.throws(() => assertNodeFloor("v22.14.0"), /Node 24\+/);
+  assert.throws(() => assertNodeFloor("18.0.0"), /Node 24\+/);
+  assert.doesNotThrow(() => assertNodeFloor("v24.0.0"));
+  const major = Number.parseInt(String(process.versions.node).split(".")[0], 10);
+  assert.ok(major >= NODE_MIN_MAJOR, process.versions.node);
+});
+
+test("cli_args.cjs --help runs on this Node and names run and render", () => {
+  const result = spawnSync(process.execPath, [path.join(ROOT, "cli_args.cjs"), "--help"], {
+    encoding: "utf8",
+  });
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(result.stdout, /\brun\b/);
+  assert.match(result.stdout, /\brender\b/);
+  assert.match(result.stdout, /exit 2/);
+});
+
 test("runCommand rejects max_output above CLI_RUN_MAX_OUTPUT_BYTES", () => {
   const {runCommand, CliArgsRequestError, CLI_RUN_MAX_OUTPUT_BYTES} = require(path.join(
     ROOT,

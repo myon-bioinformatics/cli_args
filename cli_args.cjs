@@ -1,5 +1,5 @@
 "use strict";
-/** Thin Node API: Python owns run_command/render_output via cli_args.py run/render. */
+/** Thin Node API (Node 24+): Python owns run_command/render_output via cli_args.py run/render. */
 const path = require("node:path");
 const {run, main} = require("./vendor/py_launch.cjs");
 
@@ -19,6 +19,8 @@ const CLI_RUN_RESPONSE_MAX_BYTES = 96 * 1024 * 1024;
 const CLI_RENDER_RESPONSE_MAX_BYTES = 96 * 1024 * 1024;
 /** Keep in sync with cli_args.CLI_HOST_RESPONSE_MARGIN_BYTES */
 const CLI_HOST_RESPONSE_MARGIN_BYTES = 512;
+/** Keep in sync with cli_args._NODE_MIN_MAJOR */
+const NODE_MIN_MAJOR = 24;
 
 class CliArgsRequestError extends Error {
   constructor(message) {
@@ -36,6 +38,15 @@ function cliHostMaxBufferBytes(responseMaxBytes) {
 }
 
 const STDIN_EXCEEDS_MSG = "stdin exceeds size limit";
+
+/** Reject Node hosts older than NODE_MIN_MAJOR. Pass a version string in tests. */
+function assertNodeFloor(version = process.versions.node) {
+  const match = /(?:^|\s)v?(\d+)/i.exec(String(version).trim());
+  const major = match ? Number.parseInt(match[1], 10) : NaN;
+  if (!Number.isInteger(major) || major < NODE_MIN_MAJOR) {
+    throw new Error(`cli_args.cjs requires Node ${NODE_MIN_MAJOR}+ (found ${version})`);
+  }
+}
 
 /**
  * @param {string} input
@@ -113,6 +124,7 @@ function mapLaunchError(err, failureFallback, context = {}) {
  * @param {object} [opts]
  */
 function runCommand(argv, opts = {}) {
+  assertNodeFloor();
   const maxOutput = resolveRunMaxOutput(opts);
   const request = {
     argv,
@@ -145,6 +157,7 @@ function runCommand(argv, opts = {}) {
  * @param {object} [opts]
  */
 function render(value, format = "text", opts = {}) {
+  assertNodeFloor();
   if (format !== "text" && format !== "json") {
     throw new Error("format must be text or json");
   }
@@ -168,12 +181,20 @@ function render(value, format = "text", opts = {}) {
 }
 
 if (require.main === module) {
+  try {
+    assertNodeFloor();
+  } catch (err) {
+    process.stderr.write(`${err && err.message ? err.message : err}\n`);
+    process.exit(1);
+  }
   main(PY_SCRIPT, PY_LAUNCH);
 }
 
 module.exports = {
   runCommand,
   render,
+  assertNodeFloor,
+  NODE_MIN_MAJOR,
   CliArgsRequestError,
   CLI_STDIN_MAX_BYTES,
   CLI_RUN_DEFAULT_MAX_OUTPUT_BYTES,

@@ -40,7 +40,7 @@ def install_probe_stub(monkeypatch):
 
     monkeypatch.setattr(cli_args.subprocess, "run", fake_run)
 
-    def register(path, *, version="v22.0.0", returncode=0, hang=False):
+    def register(path, *, version="v24.0.0", returncode=0, hang=False):
         key = str(path)
         table[key] = {
             "stdout": f"{version}\n".encode(),
@@ -156,10 +156,13 @@ def test_resolve_node_rejects_cmd_wrapper(tmp_path, monkeypatch):
 
 def test_resolve_node_rejects_old_version(tmp_path, monkeypatch):
     register = install_probe_stub(monkeypatch)
-    fake = register(tmp_path / "fake-node", version="v16.9.0")
+    fake = register(tmp_path / "fake-node", version="v22.14.0")
     monkeypatch.delenv("CLI_ARGS_NODE", raising=False)
-    with pytest.raises(NodeNotFoundError, match="18"):
+    with pytest.raises(NodeNotFoundError, match="24"):
         resolve_node(fake)
+    reset_node_probe_cache()
+    accepted = register(tmp_path / "node-24", version="v24.0.0")
+    assert resolve_node(accepted) == accepted
 
 
 def test_resolve_node_probe_timeout(tmp_path, monkeypatch):
@@ -172,7 +175,7 @@ def test_resolve_node_probe_timeout(tmp_path, monkeypatch):
 
 def test_resolve_node_discovery_order(monkeypatch, tmp_path):
     register = install_probe_stub(monkeypatch)
-    primary = register(tmp_path / "primary-node", version="v20.0.0")
+    primary = register(tmp_path / "primary-node", version="v24.11.0")
     fallback = shutil_which_node()
     monkeypatch.delenv("CLI_ARGS_NODE", raising=False)
     monkeypatch.setenv("NODE", primary)
@@ -221,6 +224,18 @@ def shutil_which_node() -> str:
     if path is None:
         pytest.skip("node is not installed")
     return path
+
+
+def test_run_node_rejects_non_bool_dry_run_without_executing(tmp_path):
+    marker = tmp_path / "ran.txt"
+    script = tmp_path / "touch.cjs"
+    script.write_text(
+        "require('node:fs').writeFileSync(process.argv[2], 'ran\\n');\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(TypeError, match="dry_run must be bool"):
+        run_node(script, str(marker), dry_run="yes")
+    assert not marker.exists()
 
 
 def test_run_node_dry_run_matches_run_command(tmp_path):

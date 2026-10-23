@@ -282,7 +282,16 @@ def test_cli_usage_and_version():
     assert version_proc.stdout.strip() == f"cli_args.py {cli_args.__version__}"
     help_proc = invoke("--help")
     assert help_proc.returncode == 0
-    assert "run" in help_proc.stdout
+    for token in ("run", "render", "exit 0", "exit 1", "exit 2", "returncode"):
+        assert token in help_proc.stdout
+    run_help = invoke("run", "--help")
+    assert run_help.returncode == 0
+    for token in ("argv", "dry_run", "exit 2", "returncode"):
+        assert token in run_help.stdout
+    render_help = invoke("render", "--help")
+    assert render_help.returncode == 0
+    assert "--format" in render_help.stdout
+    assert "{text,json}" in render_help.stdout
     assert invoke().returncode == 2
 
 

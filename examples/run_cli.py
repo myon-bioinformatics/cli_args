@@ -1,4 +1,13 @@
-"""Run an external command. Wrapper options precede the mandatory -- boundary."""
+"""Run an external command. Wrapper options precede the mandatory -- boundary.
+
+--format json writes one JSON result document; text writes the child stdout.
+exit 124: timeout.
+exit 125: captured output cap was hit.
+exit 127: executable was not found.
+exit 1: another launch or output failure.
+any other status is the child exit code.
+"""
+import argparse
 from pathlib import Path
 import sys
 
@@ -8,7 +17,11 @@ from cli_args import (Command, add_execution_arguments, add_output_arguments,
 
 
 def main(argv=None):
-    parser = make_parser(description=__doc__, suggest_unknown=True)
+    parser = make_parser(
+        description=__doc__,
+        suggest_unknown=True,
+        formatter_class=argparse.RawDescriptionHelpFormatter,
+    )
     add_execution_arguments(parser)
     parser.add_argument("--max-output-bytes", type=int, metavar="N",
                         help="stop child if captured stdout+stderr exceeds N bytes")
@@ -22,6 +35,9 @@ def main(argv=None):
     add_output_arguments(parser)
     tokens = list(sys.argv[1:] if argv is None else argv)
     if "--" not in tokens:
+        # --help must work before the child boundary; flags after -- belong to the child.
+        if "-h" in tokens or "--help" in tokens:
+            parser.parse_args(tokens)
         parser.error("use -- before the executable and its arguments")
     boundary = tokens.index("--")
     args = parser.parse_args(tokens[:boundary])
