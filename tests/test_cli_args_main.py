@@ -7,6 +7,7 @@ import subprocess
 import sys
 from dataclasses import asdict, fields
 from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -81,6 +82,7 @@ def test_run_json_roundtrip_and_child_exit_code_on_stdout():
     body = json.loads(proc.stdout)
     assert body["returncode"] == 6
     assert body["executed"] is True
+    assert body["output_limited"] is False
     assert "stdout_b64" in body and "stderr_b64" in body
 
 
@@ -257,11 +259,9 @@ def test_import_main_has_no_side_effects():
     assert (result.returncode, result.stdout, result.stderr) == (0, "", "")
 
 
-def test_cli_run_response_max_buffer_bytes_monotonic():
-    assert cli_args.cli_run_response_max_buffer_bytes(0) == 8192
-    low = cli_args.cli_run_response_max_buffer_bytes(1024)
-    high = cli_args.cli_run_response_max_buffer_bytes(2048)
-    assert low < high
+def test_cli_host_max_buffer_bytes_adds_margin():
+    cap = cli_args.CLI_RUN_RESPONSE_MAX_BYTES
+    assert cli_args.cli_host_max_buffer_bytes(cap) == cap + cli_args.CLI_HOST_RESPONSE_MARGIN_BYTES
 
 
 def test_run_max_output_boundary_under_and_over():
@@ -280,7 +280,7 @@ def test_run_max_output_boundary_under_and_over():
     )
     assert proc_under.returncode == 0
     body_under = json.loads(proc_under.stdout)
-    assert body_under.get("output_limited") is not True
+    assert body_under["output_limited"] is False
     assert len(base64.b64decode(body_under["stdout_b64"])) == under
     assert len(base64.b64decode(body_under["stderr_b64"])) == 1
 
@@ -298,15 +298,98 @@ def test_run_max_output_boundary_under_and_over():
     assert len(base64.b64decode(body_over["stdout_b64"])) == limit
 
 
-def test_run_max_output_at_limit_fits_node_buffer_formula():
-    limit = cli_args.CLI_RUN_DEFAULT_MAX_OUTPUT_BYTES
-    code = f"import sys; sys.stdout.buffer.write(b'a' * {limit})"
+def test_run_binary_control_bytes_under_response_cap():
+    limit = 128 * 1024
+    code = f"import sys; sys.stdout.buffer.write(bytes(i % 256 for i in range({limit})))"
     proc = invoke(
         "run",
         stdin=json.dumps(
-            {"argv": [sys.executable, "-S", "-c", code], "max_output": limit},
+            {
+                "argv": [sys.executable, "-S", "-c", code],
+                "max_output": limit,
+                "response_max_bytes": cli_args.CLI_RUN_RESPONSE_MAX_BYTES,
+            },
         ),
     )
     assert proc.returncode == 0
-    encoded = proc.stdout.encode("utf-8")
-    assert len(encoded) <= cli_args.cli_run_response_max_buffer_bytes(limit)
+    body = json.loads(proc.stdout)
+    assert body["output_limited"] is False
+    assert len(base64.b64decode(body["stdout_b64"])) == limit
+
+
+def test_run_response_max_bytes_rejects_oversized_json():
+    proc = invoke(
+        "run",
+        stdin=json.dumps(
+            {
+                "argv": [sys.executable, "-S", "-c", "import sys; sys.stdout.write('x' * 200)"],
+                "response_max_bytes": 64,
+            },
+        ),
+    )
+    assert proc.returncode == 1
+    assert "response exceeds response_max_bytes" in proc.stderr
+    assert proc.stdout == ""
+
+
+def test_run_long_argv_with_small_max_output_and_response_cap():
+    long_arg = "z" * 20000
+    proc = invoke(
+        "run",
+        stdin=json.dumps(
+            {
+                "argv": [
+                    sys.executable,
+                    "-S",
+                    "-c",
+                    "import sys; sys.stdout.buffer.write(b'a' * 900)",
+                    long_arg,
+                ],
+                "max_output": 1000,
+                "response_max_bytes": cli_args.CLI_RUN_RESPONSE_MAX_BYTES,
+            },
+        ),
+    )
+    assert proc.returncode == 0
+    body = json.loads(proc.stdout)
+    assert body["argv"][-1] == long_arg
+    assert body["output_limited"] is False
+    assert len(base64.b64decode(body["stdout_b64"])) == 900
+
+
+def _deep_nested_array(depth: int, width: int) -> list[Any]:
+    value: Any = list(range(width))
+    for _ in range(depth):
+        value = [value]
+    return value
+
+
+def test_render_deep_nesting_response_cap_boundary():
+    value = _deep_nested_array(200, 3000)
+    stdin = json.dumps(value)
+    ok_proc = invoke("render", "--format", "json", stdin=stdin)
+    assert ok_proc.returncode == 0
+    rendered_len = len(ok_proc.stdout.encode("utf-8"))
+    assert rendered_len > 500_000
+
+    over_proc = invoke(
+        "render",
+        "--format",
+        "json",
+        "--response-max-bytes",
+        str(rendered_len - 1),
+        stdin=stdin,
+    )
+    assert over_proc.returncode == 1
+    assert "response exceeds response_max_bytes" in over_proc.stderr
+
+    at_proc = invoke(
+        "render",
+        "--format",
+        "json",
+        "--response-max-bytes",
+        str(rendered_len),
+        stdin=stdin,
+    )
+    assert at_proc.returncode == 0
+    assert at_proc.stdout == ok_proc.stdout

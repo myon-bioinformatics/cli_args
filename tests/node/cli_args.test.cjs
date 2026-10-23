@@ -115,18 +115,15 @@ test("cli_args.cjs CLI exits 2 when CLI_ARGS_PYTHON is unusable", () => {
   assert.equal(result.status, 2);
 });
 
-test("runCommand applies default max_output and fits derived maxBuffer", () => {
-  const {
-    runCommand,
-    CLI_RUN_DEFAULT_MAX_OUTPUT_BYTES,
-    cliRunResponseMaxBufferBytes,
-  } = require(path.join(ROOT, "cli_args.cjs"));
+test("runCommand default max_output is 4 MiB with output_limited false", () => {
+  const {runCommand, CLI_RUN_DEFAULT_MAX_OUTPUT_BYTES, cliHostMaxBufferBytes, CLI_RUN_RESPONSE_MAX_BYTES} =
+    require(path.join(ROOT, "cli_args.cjs"));
   const limit = CLI_RUN_DEFAULT_MAX_OUTPUT_BYTES;
   const code = `import sys; sys.stdout.buffer.write(b"z" * ${limit})`;
   const body = runCommand([PYTHON, "-S", "-c", code]);
-  assert.equal(body.output_limited, undefined);
+  assert.equal(body.output_limited, false);
   assert.equal(Buffer.from(body.stdout_b64, "base64").length, limit);
-  assert.ok(cliRunResponseMaxBufferBytes(limit) > limit);
+  assert.equal(cliHostMaxBufferBytes(CLI_RUN_RESPONSE_MAX_BYTES), CLI_RUN_RESPONSE_MAX_BYTES + 512);
 });
 
 test("runCommand max_output boundary under and over", () => {
@@ -137,7 +134,7 @@ test("runCommand max_output boundary under and over", () => {
     [PYTHON, "-S", "-c", `import sys; sys.stdout.buffer.write(b"x" * ${under})`],
     {max_output: limit},
   );
-  assert.notEqual(ok.output_limited, true);
+  assert.equal(ok.output_limited, false);
   assert.equal(Buffer.from(ok.stdout_b64, "base64").length, under);
 
   const limited = runCommand(
@@ -147,6 +144,38 @@ test("runCommand max_output boundary under and over", () => {
   assert.equal(limited.output_limited, true);
   assert.equal(limited.returncode, null);
   assert.equal(Buffer.from(limited.stdout_b64, "base64").length, limit);
+});
+
+test("runCommand binary control bytes under response cap", () => {
+  const {runCommand} = require(path.join(ROOT, "cli_args.cjs"));
+  const limit = 96 * 1024;
+  const code = `import sys; sys.stdout.buffer.write(bytes(i % 256 for i in range(${limit})))`;
+  const body = runCommand([PYTHON, "-S", "-c", code], {max_output: limit});
+  assert.equal(body.output_limited, false);
+  assert.equal(Buffer.from(body.stdout_b64, "base64").length, limit);
+});
+
+test("runCommand long argv with small max_output", () => {
+  const {runCommand} = require(path.join(ROOT, "cli_args.cjs"));
+  const longArg = "y".repeat(20000);
+  const body = runCommand(
+    [PYTHON, "-S", "-c", "import sys; sys.stdout.buffer.write(b'b' * 900)", longArg],
+    {max_output: 1000},
+  );
+  assert.equal(body.argv.at(-1), longArg);
+  assert.equal(body.output_limited, false);
+  assert.equal(Buffer.from(body.stdout_b64, "base64").length, 900);
+});
+
+test("render deep nesting stays within response cap", () => {
+  const {render} = require(path.join(ROOT, "cli_args.cjs"));
+  let value = Array.from({length: 3000}, (_, i) => i);
+  for (let depth = 0; depth < 200; depth += 1) {
+    value = [value];
+  }
+  const out = render(value, "json");
+  assert.ok(out.length > 500_000);
+  assert.deepEqual(JSON.parse(out), value);
 });
 
 test("runCommand rejects max_output above CLI_RUN_MAX_OUTPUT_BYTES", () => {

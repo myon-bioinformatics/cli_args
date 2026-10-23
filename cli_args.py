@@ -705,22 +705,42 @@ CLI_RUN_DEFAULT_MAX_OUTPUT_BYTES = 4 * 1024 * 1024
 CLI_RUN_MAX_OUTPUT_BYTES = 8 * 1024 * 1024
 """Maximum ``max_output`` the Node bridge accepts; larger child output needs another host path."""
 
+CLI_RUN_RESPONSE_MAX_BYTES = 96 * 1024 * 1024
+"""Declared UTF-8 byte cap for ``cli_args.py run`` JSON stdout (Node ``response_max_bytes``)."""
+
+CLI_RENDER_RESPONSE_MAX_BYTES = 96 * 1024 * 1024
+"""Declared UTF-8 byte cap for ``cli_args.py render`` stdout (Node ``--response-max-bytes``)."""
+
+CLI_HOST_RESPONSE_MARGIN_BYTES = 512
+"""Node ``maxBuffer`` is ``response_max_bytes +`` this margin (never rely on a JSON size formula)."""
+
 _CLI_STDIN_MAX_BYTES = CLI_STDIN_MAX_BYTES
-_RUN_REQUEST_KEYS = frozenset({"argv", "timeout", "cwd", "env", "input", "max_output", "dry_run"})
+_RUN_REQUEST_KEYS = frozenset({
+    "argv", "timeout", "cwd", "env", "input", "max_output", "dry_run", "response_max_bytes",
+})
 
 
-def cli_run_response_max_buffer_bytes(max_output_bytes: int) -> int:
-    """``maxBuffer`` for capturing ``cli_args.py run`` JSON (decoded text + base64 + overhead)."""
-    if type(max_output_bytes) is not int or max_output_bytes < 0:
-        raise ValueError("max_output_bytes must be a nonnegative integer")
-    # Worst case: combined raw stdout+stderr <= max_output_bytes, each byte may appear
-    # as U+FFFD in JSON (3 UTF-8 bytes) and again in standard base64 (~4/3 expansion).
-    return max_output_bytes * 14 // 3 + 8192
+def cli_host_max_buffer_bytes(response_max_bytes: int) -> int:
+    """``maxBuffer`` for ``py_launch`` when Python enforces ``response_max_bytes`` before writing."""
+    if type(response_max_bytes) is not int or response_max_bytes < 0:
+        raise ValueError("response_max_bytes must be a nonnegative integer")
+    return response_max_bytes + CLI_HOST_RESPONSE_MARGIN_BYTES
 
 
-def cli_render_response_max_buffer_bytes() -> int:
-    """``maxBuffer`` for capturing ``cli_args.py render`` stdout from max-size stdin JSON."""
-    return CLI_STDIN_MAX_BYTES * 4 + 8192
+class _CliResponseTooLargeError(Exception):
+    """Serialized CLI stdout would exceed the declared response_max_bytes cap (exit 1)."""
+
+
+def _emit_cli_stdout(text: str, response_max_bytes: int | None) -> None:
+    encoded = text.encode("utf-8")
+    if response_max_bytes is not None:
+        if type(response_max_bytes) is not int or response_max_bytes < 0:
+            raise _CliRequestError("response_max_bytes must be a nonnegative integer")
+        if len(encoded) > response_max_bytes:
+            raise _CliResponseTooLargeError(
+                f"response exceeds response_max_bytes ({response_max_bytes} bytes, got {len(encoded)})",
+            )
+    sys.stdout.write(text)
 
 
 def _reject_json_non_finite(constant: str) -> Any:
@@ -739,8 +759,6 @@ def _read_stdin_text() -> str:
 
 def _command_result_cli_json(result: CommandResult, stdout_raw: bytes, stderr_raw: bytes) -> dict[str, Any]:
     payload = asdict(result)
-    if not payload["output_limited"]:
-        del payload["output_limited"]
     payload["stdout_b64"] = base64.standard_b64encode(stdout_raw).decode("ascii")
     payload["stderr_b64"] = base64.standard_b64encode(stderr_raw).decode("ascii")
     return payload
@@ -786,6 +804,9 @@ def _parse_run_request(payload: Any) -> dict[str, Any]:
     dry_run = payload.get("dry_run", False)
     if type(dry_run) is not bool:
         raise _CliRequestError("dry_run must be a boolean")
+    response_max_bytes = payload.get("response_max_bytes")
+    if response_max_bytes is not None and (type(response_max_bytes) is not int or response_max_bytes < 0):
+        raise _CliRequestError("response_max_bytes must be a nonnegative integer")
     return {
         "command": command,
         "cwd": cwd,
@@ -794,6 +815,7 @@ def _parse_run_request(payload: Any) -> dict[str, Any]:
         "stdin": stdin,
         "max_output_bytes": max_output,
         "dry_run": dry_run,
+        "response_max_bytes": response_max_bytes,
     }
 
 
@@ -822,23 +844,23 @@ def _cli_run() -> int:
     except OSError as exc:
         print(str(exc), file=sys.stderr)
         return 1
-    sys.stdout.write(
-        json.dumps(
-            _command_result_cli_json(result, stdout_raw, stderr_raw),
-            ensure_ascii=False,
-            allow_nan=False,
-            indent=2,
-        ) + "\n",
-    )
+    body = json.dumps(
+        _command_result_cli_json(result, stdout_raw, stderr_raw),
+        ensure_ascii=False,
+        allow_nan=False,
+        indent=2,
+    ) + "\n"
+    _emit_cli_stdout(body, request["response_max_bytes"])
     return 0
 
 
-def _cli_render(format: str) -> int:
+def _cli_render(format: str, response_max_bytes: int | None) -> int:
     payload = _load_stdin_json()
     try:
-        sys.stdout.write(render_output(payload, format=format))
+        rendered = render_output(payload, format=format)
     except ValueError as exc:
         raise _CliRequestError(str(exc)) from exc
+    _emit_cli_stdout(rendered, response_max_bytes)
     return 0
 
 
@@ -853,6 +875,12 @@ def _main(argv: Sequence[str] | None = None) -> int:
     subparsers.add_parser("run", help="run a command from a JSON request on stdin")
     render_parser = subparsers.add_parser("render", help="render a JSON value from stdin")
     render_parser.add_argument("--format", choices=("text", "json"), default="text")
+    render_parser.add_argument(
+        "--response-max-bytes",
+        type=int,
+        default=None,
+        help="reject stdout larger than this UTF-8 byte cap (Node bridge sets CLI_RENDER_RESPONSE_MAX_BYTES)",
+    )
     try:
         args = parser.parse_args(None if argv is None else list(argv))
     except argparse.ArgumentError as exc:
@@ -865,10 +893,13 @@ def _main(argv: Sequence[str] | None = None) -> int:
     try:
         if args.command == "run":
             return _cli_run()
-        return _cli_render(args.format)
+        return _cli_render(args.format, args.response_max_bytes)
     except _CliRequestError as exc:
         print(str(exc), file=sys.stderr)
         return 2
+    except _CliResponseTooLargeError as exc:
+        print(str(exc), file=sys.stderr)
+        return 1
     except Exception as exc:
         print(str(exc) or exc.__class__.__name__, file=sys.stderr)
         return 1

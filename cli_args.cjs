@@ -13,6 +13,12 @@ const CLI_STDIN_MAX_BYTES = 4 * 1024 * 1024;
 const CLI_RUN_DEFAULT_MAX_OUTPUT_BYTES = 4 * 1024 * 1024;
 /** Keep in sync with cli_args.CLI_RUN_MAX_OUTPUT_BYTES */
 const CLI_RUN_MAX_OUTPUT_BYTES = 8 * 1024 * 1024;
+/** Keep in sync with cli_args.CLI_RUN_RESPONSE_MAX_BYTES */
+const CLI_RUN_RESPONSE_MAX_BYTES = 96 * 1024 * 1024;
+/** Keep in sync with cli_args.CLI_RENDER_RESPONSE_MAX_BYTES */
+const CLI_RENDER_RESPONSE_MAX_BYTES = 96 * 1024 * 1024;
+/** Keep in sync with cli_args.CLI_HOST_RESPONSE_MARGIN_BYTES */
+const CLI_HOST_RESPONSE_MARGIN_BYTES = 512;
 
 class CliArgsRequestError extends Error {
   constructor(message) {
@@ -21,16 +27,12 @@ class CliArgsRequestError extends Error {
   }
 }
 
-/** @param {number} maxOutputBytes */
-function cliRunResponseMaxBufferBytes(maxOutputBytes) {
-  if (!Number.isInteger(maxOutputBytes) || maxOutputBytes < 0) {
-    throw new CliArgsRequestError("max_output must be a nonnegative integer");
+/** @param {number} responseMaxBytes */
+function cliHostMaxBufferBytes(responseMaxBytes) {
+  if (!Number.isInteger(responseMaxBytes) || responseMaxBytes < 0) {
+    throw new CliArgsRequestError("response_max_bytes must be a nonnegative integer");
   }
-  return Math.floor(maxOutputBytes * 14 / 3) + 8192;
-}
-
-function cliRenderResponseMaxBufferBytes() {
-  return CLI_STDIN_MAX_BYTES * 4 + 8192;
+  return responseMaxBytes + CLI_HOST_RESPONSE_MARGIN_BYTES;
 }
 
 /**
@@ -59,8 +61,8 @@ function mapLaunchError(err, failureFallback) {
   if (code === "ENOBUFS" || /\bENOBUFS\b/.test(msg)) {
     throw new Error(
       ERR_PREFIX +
-        "Python response exceeded the Node capture buffer; reduce child output, set a lower max_output, " +
-        "or call cli_args.py directly without the Node wrapper",
+        "internal error: Python stdout exceeded the Node capture buffer despite response_max_bytes " +
+        "(report as a cli_args bug)",
     );
   }
   if (msg.startsWith("py_launch: Python process failed: ")) {
@@ -77,7 +79,11 @@ function mapLaunchError(err, failureFallback) {
       throw new CliArgsRequestError(detail);
     }
     if (err.status !== 0) {
-      throw new Error((err.stderr && err.stderr.toString("utf8").trim()) || failureFallback);
+      const detail = (err.stderr && err.stderr.toString("utf8").trim()) || failureFallback;
+      if (/response exceeds response_max_bytes/.test(detail)) {
+        throw new Error(ERR_PREFIX + detail);
+      }
+      throw new Error(detail);
     }
   }
   throw err;
@@ -89,7 +95,11 @@ function mapLaunchError(err, failureFallback) {
  */
 function runCommand(argv, opts = {}) {
   const maxOutput = resolveRunMaxOutput(opts);
-  const request = {argv, max_output: maxOutput};
+  const request = {
+    argv,
+    max_output: maxOutput,
+    response_max_bytes: CLI_RUN_RESPONSE_MAX_BYTES,
+  };
   if (opts.cwd !== undefined) request.cwd = opts.cwd;
   if (opts.timeout !== undefined) request.timeout = opts.timeout;
   if (opts.env !== undefined) request.env = opts.env;
@@ -101,7 +111,7 @@ function runCommand(argv, opts = {}) {
       ...PY_LAUNCH,
       python: opts.python,
       input,
-      maxBuffer: cliRunResponseMaxBufferBytes(maxOutput),
+      maxBuffer: cliHostMaxBufferBytes(CLI_RUN_RESPONSE_MAX_BYTES),
     });
     return JSON.parse(String(result.stdout));
   } catch (err) {
@@ -120,12 +130,16 @@ function render(value, format = "text", opts = {}) {
   }
   const input = `${JSON.stringify(value)}\n`;
   try {
-    const result = run(PY_SCRIPT, ["render", "--format", format], {
-      ...PY_LAUNCH,
-      python: opts.python,
-      input,
-      maxBuffer: cliRenderResponseMaxBufferBytes(),
-    });
+    const result = run(
+      PY_SCRIPT,
+      ["render", "--format", format, "--response-max-bytes", String(CLI_RENDER_RESPONSE_MAX_BYTES)],
+      {
+        ...PY_LAUNCH,
+        python: opts.python,
+        input,
+        maxBuffer: cliHostMaxBufferBytes(CLI_RENDER_RESPONSE_MAX_BYTES),
+      },
+    );
     return String(result.stdout);
   } catch (err) {
     mapLaunchError(err, "cli_args render failed");
@@ -143,6 +157,8 @@ module.exports = {
   CLI_STDIN_MAX_BYTES,
   CLI_RUN_DEFAULT_MAX_OUTPUT_BYTES,
   CLI_RUN_MAX_OUTPUT_BYTES,
-  cliRunResponseMaxBufferBytes,
-  cliRenderResponseMaxBufferBytes,
+  CLI_RUN_RESPONSE_MAX_BYTES,
+  CLI_RENDER_RESPONSE_MAX_BYTES,
+  CLI_HOST_RESPONSE_MARGIN_BYTES,
+  cliHostMaxBufferBytes,
 };

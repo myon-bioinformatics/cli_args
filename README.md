@@ -85,7 +85,9 @@ const text = render({title: "日本語"}, "json");
 
 CLI として直接実行する場合は `node cli_args.cjs run`（stdin に JSON）や `node cli_args.cjs render --format json`（stdin に値）と同じ契約です。不正な JSON や未知フィールドは Python が exit 2 で返し、ライブラリ API では `CliArgsRequestError` になります。インタプリタ起動失敗は `cli_args Python process failed: …` です。
 
-Node の `runCommand` は常に Python へ `max_output` を渡します（省略時は `CLI_RUN_DEFAULT_MAX_OUTPUT_BYTES`、4 MiB。`cli_args.py` の同名定数と一致）。`opts.max_output` は 0 以上 `CLI_RUN_MAX_OUTPUT_BYTES`（8 MiB）以下の整数のみ。子の stdout/stderr **合計**の生バイト上限です。Node は `cli_run_response_max_buffer_bytes(max_output)`（`cli_args.py` / `cli_args.cjs` 同式）で Python の JSON（decoded テキスト + `*_b64` + 余白）を収める `maxBuffer` を導出します。超過時は子を `output_limited` で止め、Node 側の生 `ENOBUFS` ではなく契約どおりの結果または明示エラーになります。`render` は stdin 4 MiB 契約に合わせ `cli_render_response_max_buffer_bytes()` を使います。直接 `python -S cli_args.py run` を呼ぶ場合は従来どおり `max_output` 省略で非制限です。
+**挙動変更（#27）:** Node の `runCommand` で `opts.max_output` を省略すると、Python へ **常に** `max_output: CLI_RUN_DEFAULT_MAX_OUTPUT_BYTES`（4 MiB）が送られます。以前の Node ラッパーは非制限に近い動きでしたが、橋渡しでは子の stdout/stderr 合計を 4 MiB で切ります。より大きい出力は `opts.max_output`（最大 `CLI_RUN_MAX_OUTPUT_BYTES`、8 MiB）を明示してください。直接 `python -S cli_args.py run` は従来どおり `max_output` 省略で非制限です。
+
+Node は `response_max_bytes: CLI_RUN_RESPONSE_MAX_BYTES`（96 MiB）を `run` リクエストに付け、Python が **実際にシリアライズした JSON の UTF-8 長**をその上限と照合してから stdout に書きます。超過時は終了 **1**（stderr に `response exceeds response_max_bytes`）。Node の `maxBuffer` は `CLI_RUN_RESPONSE_MAX_BYTES + CLI_HOST_RESPONSE_MARGIN_BYTES` のみ（サイズの推定式は使いません）。`render` も `--response-max-bytes CLI_RENDER_RESPONSE_MAX_BYTES` と同じ照合・同じ `maxBuffer` 契約です。`run` の JSON には `output_limited` を常に含めます（`false` も省略しません）。
 
 ## stdin入力を明示的に渡す（他repo横断で回収）
 
@@ -156,7 +158,7 @@ python -S examples/run_cli.py --format json --output result.json --timeout 30 --
 
 `run` の JSON オブジェクトは `argv`（必須）に加え、任意で `timeout` / `cwd` / `env` / `input` / `max_output` / `dry_run` を受け取ります。stdin は UTF-8 で **4 MiB** まで（超過・非 UTF-8・`NaN`/`Infinity` を含む JSON は終了 **2**）。未知キー・型不一致・不正 JSON も終了 **2**（stderr 1行）。リクエストを処理できた場合は終了 **0** で、子プロセスの終了コードは JSON の `returncode` に入ります。実行ファイル不在や `cwd` 不存在などの**起動失敗**は **1** です。`shell` は受け付けません。
 
-`run` の JSON には、ライブラリの `render_output` とは別に、捕捉した生バイト列の **Base64** フィールド `stdout_b64` / `stderr_b64` を常に付けます。`stdout` / `stderr` は UTF-8 として解釈し、不正バイトは U+FFFD に置換したテキストです。バイナリや非 UTF-8 を欠損なく扱う場合は `*_b64` を使います。`--version` は `cli_args.py` 内の `__version__` 定数（vendor 単体コピーでも同じ値）を表示します。
+`run` の JSON には、ライブラリの `render_output` とは別に、捕捉した生バイト列の **Base64** フィールド `stdout_b64` / `stderr_b64` を常に付けます。`output_limited` は常に `true` / `false` で返します（CLI のみ。ライブラリの `render_output` JSON は従来どおり `false` のとき省略）。`stdout` / `stderr` は UTF-8 として解釈し、不正バイトは U+FFFD に置換したテキストです。バイナリや非 UTF-8 を欠損なく扱う場合は `*_b64` を使います。`--version` は `cli_args.py` 内の `__version__` 定数（vendor 単体コピーでも同じ値）を表示します。
 
 ```bash
 printf '%s' '{"argv":["python","-c","print(1)"],"dry_run":true}' | python -S cli_args.py run
