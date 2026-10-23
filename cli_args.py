@@ -421,19 +421,22 @@ def _probe_node_once(path: str) -> str:
     return path
 
 
-def resolve_node(node: str | os.PathLike[str] | None = None) -> str:
-    """Locate a Node 18+ executable.
-
-    Explicit ``node``, ``CLI_ARGS_NODE``, or a caller-supplied ``--node`` value must
-    work as given; auto-discovery tries ``NODE`` then ``shutil.which('node')``.
-    """
+def _node_executable(node: str | os.PathLike[str] | None, *, probe: bool) -> str:
+    """Return a Node argv[0] token; probe runs ``node --version`` when enabled."""
     explicit = node is not None
     if not explicit and "CLI_ARGS_NODE" in os.environ:
         node = os.environ["CLI_ARGS_NODE"]
         explicit = True
     if explicit:
         path = _token(node)
-        return _probe_node_once(path)
+        return _probe_node_once(path) if probe else path
+
+    if not probe:
+        env_node = os.environ.get("NODE")
+        if env_node:
+            return _token(env_node)
+        discovered = shutil.which("node")
+        return discovered if discovered else "node"
 
     candidates: list[str] = []
     env_node = os.environ.get("NODE")
@@ -454,11 +457,21 @@ def resolve_node(node: str | os.PathLike[str] | None = None) -> str:
     raise NodeNotFoundError("cli_args: node executable not found")
 
 
+def resolve_node(node: str | os.PathLike[str] | None = None) -> str:
+    """Locate a Node 18+ executable.
+
+    Explicit ``node``, ``CLI_ARGS_NODE``, or a caller-supplied ``--node`` value must
+    work as given; auto-discovery tries ``NODE`` then ``shutil.which('node')``.
+    """
+    return _node_executable(node, probe=True)
+
+
 def node_command(target: str | os.PathLike[str], *args: str | os.PathLike[str],
                  node: str | os.PathLike[str] | None = None,
-                 node_flags: Sequence[str | os.PathLike[str]] = ()) -> Command:
+                 node_flags: Sequence[str | os.PathLike[str]] = (),
+                 probe: bool = True) -> Command:
     """Build ``[node, *node_flags, target, *args]`` without reinterpreting passthrough argv."""
-    executable = resolve_node(node)
+    executable = _node_executable(node, probe=probe)
     flags = _tokens(node_flags)
     script = _token(target)
     trailing = tuple(_token(value) for value in args)
@@ -469,17 +482,26 @@ def run_node(target: str | os.PathLike[str], *args: str | os.PathLike[str],
              node: str | os.PathLike[str] | None = None,
              node_flags: Sequence[str | os.PathLike[str]] = (),
              **run_command_kwargs: Any) -> CommandResult:
-    return run_command(node_command(target, *args, node=node, node_flags=node_flags),
-                       **run_command_kwargs)
+    dry_run = run_command_kwargs.get("dry_run", False)
+    if type(dry_run) is not bool:
+        dry_run = False
+    return run_command(
+        node_command(target, *args, node=node, node_flags=node_flags, probe=not dry_run),
+        **run_command_kwargs,
+    )
 
 
 def node_or_command(argv: Sequence[str | os.PathLike[str]], *,
                     node: str | os.PathLike[str] | None = None,
-                    node_flags: Sequence[str | os.PathLike[str]] = ()) -> Command:
+                    node_flags: Sequence[str | os.PathLike[str]] = (),
+                    probe: bool = True) -> Command:
     """Wrap ``argv[0]`` with Node when it names a ``.js`` / ``.cjs`` / ``.mjs`` file."""
     tokens = _tokens(argv)
+    if not tokens:
+        return Command(tokens)
     if is_node_target(tokens[0]):
-        return node_command(tokens[0], *tokens[1:], node=node, node_flags=node_flags)
+        return node_command(tokens[0], *tokens[1:], node=node, node_flags=node_flags,
+                            probe=probe)
     return Command(tokens)
 
 

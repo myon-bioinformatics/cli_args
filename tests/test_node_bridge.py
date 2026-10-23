@@ -103,6 +103,11 @@ def test_node_command_argv_order_and_passthrough(tmp_path, monkeypatch):
     )
 
 
+def test_node_or_command_empty_argv_matches_command():
+    with pytest.raises(ValueError, match="non-empty executable"):
+        node_or_command([])
+
+
 def test_node_or_command_opt_in():
     plain = node_or_command(("git", "status", "--short"))
     assert plain.argv == ("git", "status", "--short")
@@ -224,6 +229,21 @@ def test_run_node_dry_run_matches_run_command(tmp_path):
     assert result.executed is False
     assert result.returncode is None
     assert result.argv[1:].index("one") > 0
+
+
+def test_run_node_dry_run_skips_probe_without_node(monkeypatch, tmp_path):
+    cjs, _ = write_echo_scripts(tmp_path)
+    monkeypatch.delenv("CLI_ARGS_NODE", raising=False)
+    monkeypatch.delenv("NODE", raising=False)
+    monkeypatch.setattr(cli_args.shutil, "which", lambda name: None)
+    def forbid_subprocess(*_args, **_kwargs):
+        raise AssertionError("subprocess must not run during dry_run")
+
+    monkeypatch.setattr(cli_args.subprocess, "run", forbid_subprocess)
+
+    result = run_node(cjs, "tail", dry_run=True)
+    assert result.executed is False
+    assert result.argv == ("node", str(cjs), "tail")
 
 
 def test_node_command_nul_rejected():

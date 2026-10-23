@@ -51,9 +51,9 @@ write_output(result, format="json")
 
 ## Node.js を argv から実行する
 
-`node_command(target, *args, node=None, node_flags=())` は `[node, *node_flags, target, *args]` を構築します。`run_node(...)` は `run_command()` の薄いラッパで、`timeout` / `max_output_bytes` / `env` / `dry_run` など既存の実行契約をそのまま使えます。`is_node_target(path)` は `.js` / `.cjs` / `.mjs` を判定します。
+`node_command(target, *args, node=None, node_flags=())` は `[node, *node_flags, target, *args]` を構築します。`run_node(...)` は `run_command()` の薄いラッパで、`timeout` / `max_output_bytes` / `env` / `dry_run` など既存の実行契約をそのまま使えます。`dry_run=True` のときは `node --version` の probe も子プロセス起動も行わず、探索順に沿った argv[0] トークン（最後は字面 `node`）だけを組み立てます。`is_node_target(path)` は `.js` / `.cjs` / `.mjs` を判定します。`node_or_command([])` は `Command(())` と同様に `ValueError` です。
 
-Node の探索順は次のとおりです。`node=` 引数、`--node`、`CLI_ARGS_NODE` は**明示指定**で、失敗時にフォールバックしません。その後 `NODE` 環境変数、`shutil.which('node')` を試します。Windows の `.cmd` / `.bat` ラッパは拒否し、見つかった実行ファイルは `node --version` を 5 秒以内に一度だけ確認し、Node 18 以上であることを要求します。見つからない・古い・タイムアウトは `NodeNotFoundError`（`FileNotFoundError` のサブクラス、メッセージは `cli_args: node …`）です。子プロセスの終了コードは `returncode` にそのまま載ります。`shell=True` は使いません。
+Node の探索順は次のとおりです。`node=` 引数、`--node`、`CLI_ARGS_NODE` は**明示指定**で、失敗時にフォールバックしません。その後 `NODE` 環境変数、`shutil.which('node')` を試します。Windows の `.cmd` / `.bat` ラッパは拒否し、見つかった実行ファイルは `node --version` を 5 秒以内に一度だけ確認し、Node 18 以上であることを要求します（`dry_run` 時は probe を省略）。見つからない・古い・タイムアウトは `NodeNotFoundError`（`FileNotFoundError` のサブクラス、メッセージは `cli_args: node …`）です。子プロセスの終了コードは `returncode` にそのまま載ります。`shell=True` は使いません。
 
 CLI から opt-in する場合は `add_node_arguments(parser)` で `--node PATH` と繰り返し `--node-flag`（値が `-` で始まるときは `--node-flag=--import=x` の形）を追加し、実行 argv を組み立てる直前で `node_or_command(argv, node=args.node, node_flags=args.node_flags)` を呼びます。`.js` / `.cjs` / `.mjs` が先頭トークンのときだけ Node で包み、それ以外は `Command(argv)` をそのまま返します。既存の argv 意味は、このヘルパを使わない限り変わりません。
 
