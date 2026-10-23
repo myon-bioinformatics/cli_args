@@ -1,0 +1,27 @@
+{
+  "source": "User-supplied project artwork sheet, 2026-10-23",
+  "source_dimensions": [
+    1536,
+    1024
+  ],
+  "coordinate_convention": "left, top, right-exclusive, bottom-exclusive",
+  "project": {
+    "label": "cli_args",
+    "icon": [
+      944,
+      71,
+      1112,
+      239
+    ],
+    "icon_sha256": "24ef9f632d0e49ec9bf3f5f71ba7d15bc3c55c668d620f4ac9d954560a3c167e",
+    "icon_rgb_sha256": "c4fb052b4fe116a198fd94f34fc605009880ae758dce0177eec7aba7699ae2b0",
+    "favicon_sha256": "58ae7ecdd188f7d90670cbd8058e9b9c6e69bf555eaab756cd186d0e47792575",
+    "favicon_rgb_sha256": "d284c55483aa42e828272c5a253dcf7cdc37f959148aab7d0ecb02d38ad84960",
+    "favicon_source": "docs/brand/icon.png resampled to 64x64 with LANCZOS",
+    "favicon_size": [
+      64,
+      64
+    ],
+    "favicon_background": "#fafafa"
+  }
+}
