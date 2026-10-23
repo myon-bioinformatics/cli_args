@@ -1,17 +1,46 @@
 import base64
+import dataclasses
 import io
 import json
 import re
 import subprocess
 import sys
+from dataclasses import asdict, fields
 from pathlib import Path
 
 import pytest
 
 import cli_args
+from cli_args import Command, CommandResult, run_command
 
 ROOT = Path(__file__).resolve().parents[1]
 CLI = ROOT / "cli_args.py"
+
+_COMMAND_RESULT_FIELD_NAMES = (
+    "argv",
+    "returncode",
+    "stdout",
+    "stderr",
+    "executed",
+    "timed_out",
+    "output_limited",
+)
+
+
+def test_command_result_public_fields_unchanged():
+    assert tuple(field.name for field in fields(CommandResult)) == _COMMAND_RESULT_FIELD_NAMES
+
+
+def test_command_result_asdict_is_json_serializable():
+    result = CommandResult(("tool",), 0, "out", "err", True)
+    json.dumps(asdict(result), ensure_ascii=False, allow_nan=False)
+
+
+def test_run_command_asdict_is_json_serializable():
+    result = run_command(
+        Command((sys.executable, "-S", "-c", "print('ok')")),
+    )
+    json.dumps(asdict(result), ensure_ascii=False, allow_nan=False)
 
 
 def invoke(*argv: str, stdin: str | bytes = "") -> subprocess.CompletedProcess[str]:

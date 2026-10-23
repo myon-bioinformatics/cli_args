@@ -213,26 +213,28 @@ class CommandResult:
     executed: bool
     timed_out: bool = False
     output_limited: bool = False
-    stdout_bytes: bytes = field(default=b"", repr=False, compare=False)
-    stderr_bytes: bytes = field(default=b"", repr=False, compare=False)
 
 
 def _decode(value: bytes | None) -> str:
     return (value or b"").decode("utf-8", errors="replace")
 
 
-def _command_result(command: Command, returncode: int | None, stdout: bytes | None, stderr: bytes | None,
-                    executed: bool, *, timed_out: bool = False, output_limited: bool = False) -> CommandResult:
+def _command_result_with_bytes(command: Command, returncode: int | None, stdout: bytes | None,
+                               stderr: bytes | None, executed: bool, *,
+                               timed_out: bool = False,
+                               output_limited: bool = False) -> tuple[CommandResult, bytes, bytes]:
     out, err = stdout or b"", stderr or b""
-    return CommandResult(
-        command.argv, returncode, _decode(out), _decode(err), executed,
-        timed_out, output_limited, out, err,
+    return (
+        CommandResult(command.argv, returncode, _decode(out), _decode(err), executed,
+                      timed_out, output_limited),
+        out,
+        err,
     )
 
 
-def _run_bounded(command: Command, data: bytes | None, *, cwd: str | os.PathLike[str] | None,
-                 timeout: float | None, env: Mapping[str, str] | None,
-                 limit: int) -> CommandResult:
+def _run_bounded_with_bytes(command: Command, data: bytes | None, *, cwd: str | os.PathLike[str] | None,
+                            timeout: float | None, env: Mapping[str, str] | None,
+                            limit: int) -> tuple[CommandResult, bytes, bytes]:
     """Read two pipes concurrently with a shared byte cap; stop noisy children."""
     process = subprocess.Popen(
         command.argv, cwd=cwd, env=env, stdin=subprocess.PIPE if data is not None else None,
@@ -296,7 +298,7 @@ def _run_bounded(command: Command, data: bytes | None, *, cwd: str | os.PathLike
         process.wait()
     for worker in workers:
         worker.join()
-    return _command_result(
+    return _command_result_with_bytes(
         command,
         None if timed_out or limited.is_set() else process.returncode,
         bytes(captured[0]), bytes(captured[1]),
@@ -320,6 +322,19 @@ def run_command(command: Command, *, cwd: str | os.PathLike[str] | None = None,
     process-tree cleanup are outside this contract. When max_output_bytes is set,
     stdout/stderr share a byte cap and the child is stopped on overflow.
     """
+    result, _, _ = _run_command_with_bytes(
+        command, cwd=cwd, timeout=timeout, dry_run=dry_run, env=env,
+        stdin=stdin, max_output_bytes=max_output_bytes,
+    )
+    return result
+
+
+def _run_command_with_bytes(command: Command, *, cwd: str | os.PathLike[str] | None = None,
+                            timeout: float | None = None, dry_run: bool = False,
+                            env: Mapping[str, str] | None = None,
+                            stdin: str | bytes | None = None,
+                            max_output_bytes: int | None = None) -> tuple[CommandResult, bytes, bytes]:
+    """Like run_command, but also return captured stdout/stderr as raw bytes for the CLI."""
     if timeout is not None and (not math.isfinite(timeout) or timeout <= 0):
         raise ValueError("timeout must be positive and finite")
     if stdin is not None and not isinstance(stdin, (str, bytes)):
@@ -328,16 +343,18 @@ def run_command(command: Command, *, cwd: str | os.PathLike[str] | None = None,
     if max_output_bytes is not None and (type(max_output_bytes) is not int or max_output_bytes < 0):
         raise ValueError("max_output_bytes must be a nonnegative integer or None")
     if dry_run:
-        return _command_result(command, None, b"", b"", False)
+        return _command_result_with_bytes(command, None, b"", b"", False)
     if max_output_bytes is not None:
-        return _run_bounded(command, data, cwd=cwd, timeout=timeout, env=env,
-                            limit=max_output_bytes)
+        return _run_bounded_with_bytes(
+            command, data, cwd=cwd, timeout=timeout, env=env, limit=max_output_bytes,
+        )
     try:
-        result = subprocess.run(command.argv, cwd=cwd, timeout=timeout, env=env,
-                                input=data, capture_output=True, shell=False, check=False)
+        completed = subprocess.run(command.argv, cwd=cwd, timeout=timeout, env=env,
+                                   input=data, capture_output=True, shell=False, check=False)
     except subprocess.TimeoutExpired as exc:
-        return _command_result(command, None, exc.stdout, exc.stderr, True, timed_out=True)
-    return _command_result(command, result.returncode, result.stdout, result.stderr, True)
+        return _command_result_with_bytes(command, None, exc.stdout, exc.stderr, True, timed_out=True)
+    return _command_result_with_bytes(command, completed.returncode, completed.stdout,
+                                      completed.stderr, True)
 
 
 def render_output(value: Any, *, format: str = "text") -> str:
@@ -347,8 +364,6 @@ def render_output(value: Any, *, format: str = "text") -> str:
         if format == "text":
             return value.stdout if value.executed else json.dumps(list(value.argv), ensure_ascii=False) + "\n"
         value = asdict(value)
-        value.pop("stdout_bytes", None)
-        value.pop("stderr_bytes", None)
         if not value["output_limited"]:
             del value["output_limited"]  # preserve the existing JSON contract
     if format == "json":
@@ -559,14 +574,12 @@ def _read_stdin_text() -> str:
         raise _CliRequestError("stdin must be UTF-8") from exc
 
 
-def _command_result_cli_json(result: CommandResult) -> dict[str, Any]:
+def _command_result_cli_json(result: CommandResult, stdout_raw: bytes, stderr_raw: bytes) -> dict[str, Any]:
     payload = asdict(result)
-    payload.pop("stdout_bytes", None)
-    payload.pop("stderr_bytes", None)
     if not payload["output_limited"]:
         del payload["output_limited"]
-    payload["stdout_b64"] = base64.standard_b64encode(result.stdout_bytes).decode("ascii")
-    payload["stderr_b64"] = base64.standard_b64encode(result.stderr_bytes).decode("ascii")
+    payload["stdout_b64"] = base64.standard_b64encode(stdout_raw).decode("ascii")
+    payload["stderr_b64"] = base64.standard_b64encode(stderr_raw).decode("ascii")
     return payload
 
 
@@ -634,7 +647,7 @@ def _load_stdin_json() -> Any:
 def _cli_run() -> int:
     request = _parse_run_request(_load_stdin_json())
     try:
-        result = run_command(
+        result, stdout_raw, stderr_raw = _run_command_with_bytes(
             request["command"],
             cwd=request["cwd"],
             timeout=request["timeout"],
@@ -647,7 +660,12 @@ def _cli_run() -> int:
         print(str(exc), file=sys.stderr)
         return 1
     sys.stdout.write(
-        json.dumps(_command_result_cli_json(result), ensure_ascii=False, allow_nan=False, indent=2) + "\n",
+        json.dumps(
+            _command_result_cli_json(result, stdout_raw, stderr_raw),
+            ensure_ascii=False,
+            allow_nan=False,
+            indent=2,
+        ) + "\n",
     )
     return 0
 
