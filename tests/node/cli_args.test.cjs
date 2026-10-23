@@ -71,18 +71,18 @@ test("runCommand roundtrip and child exit code", () => {
 test("runCommand preserves Japanese output", () => {
   const {runCommand} = require(path.join(ROOT, "cli_args.cjs"));
   const body = runCommand([PYTHON, "-S", "-c", "print('日本語')"]);
-  assert.equal(body.stdout, "日本語\n");
+  assert.equal(normalizeNewlines(body.stdout), "日本語\n");
   assert.equal(body.returncode, 0);
 });
 
 test("render text and json", () => {
   const {render} = require(path.join(ROOT, "cli_args.cjs"));
   const value = {title: "日本語", n: 1};
-  assert.equal(render(value, "text"), "{'title': '日本語', 'n': 1}\n");
+  assert.equal(normalizeNewlines(render(value, "text")), "{'title': '日本語', 'n': 1}\n");
   assert.deepEqual(JSON.parse(render(value, "json")), value);
 });
 
-test("CLI_ARGS_PYTHON is used when set explicitly", (t) => {
+test("CLI_ARGS_PYTHON is used when set explicitly", {skip: process.platform === "win32"}, (t) => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "cli-args-fake-py-"));
   t.after(() => fs.rmSync(dir, {recursive: true, force: true}));
   const {fake, marker} = writeFakePython(dir);

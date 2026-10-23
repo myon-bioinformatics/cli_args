@@ -49,6 +49,14 @@ function assertStdinWithinLimit(input) {
 /**
  * @param {object} opts
  */
+function defaultPythonChildEnv(overrides = {}) {
+  return {
+    PYTHONIOENCODING: "utf-8",
+    PYTHONUTF8: "1",
+    ...overrides,
+  };
+}
+
 function resolveRunMaxOutput(opts) {
   const value = opts.max_output !== undefined ? opts.max_output : CLI_RUN_DEFAULT_MAX_OUTPUT_BYTES;
   if (!Number.isInteger(value) || value < 0) {
@@ -121,7 +129,7 @@ function runCommand(argv, opts = {}) {
   };
   if (opts.cwd !== undefined) request.cwd = opts.cwd;
   if (opts.timeout !== undefined) request.timeout = opts.timeout;
-  if (opts.env !== undefined) request.env = opts.env;
+  request.env = defaultPythonChildEnv(opts.env ?? {});
   if (opts.input !== undefined) request.input = opts.input;
   if (opts.dry_run !== undefined) request.dry_run = opts.dry_run;
   const input = `${JSON.stringify(request)}\n`;
