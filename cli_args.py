@@ -411,7 +411,7 @@ class NodeNotFoundError(FileNotFoundError):
 
 
 _NODE_PROBE_CACHE: dict[str, str] = {}
-_NODE_MIN_MAJOR = 18
+_NODE_MIN_MAJOR = 24
 _NODE_VERSION = re.compile(r"(?:^|\s)v?(?P<major>\d+)(?:\.\d+)*", re.IGNORECASE)
 
 
@@ -491,7 +491,7 @@ def _node_executable(node: str | os.PathLike[str] | None, *, probe: bool) -> str
 
 
 def resolve_node(node: str | os.PathLike[str] | None = None) -> str:
-    """Locate a Node 18+ executable.
+    """Locate a Node 24+ executable.
 
     Explicit ``node``, ``CLI_ARGS_NODE``, or a caller-supplied ``--node`` value must
     work as given; auto-discovery tries ``NODE`` then ``shutil.which('node')``.

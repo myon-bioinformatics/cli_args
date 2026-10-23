@@ -1,3 +1,4 @@
 
 # Preserve locked vendor bytes on every operating system.
 vendor/* -text
+vendor/py_launch.cjs -text
