@@ -53,7 +53,7 @@ test("vendored py_launch.cjs matches vendor.lock.json", () => {
     crypto.createHash("sha1").update(Buffer.concat([Buffer.from(`blob ${data.length}\0`), data])).digest("hex"),
     entry.blob_sha,
   );
-  assert.equal(entry.commit, "c73821de8492b2394c718cb276cad9f683ff1910");
+  assert.equal(entry.commit, "1116d5c4f55d25af4d21cfe9b3c88f49d3a476fa");
 });
 
 test("cli_args.cjs does not spawn node", () => {
