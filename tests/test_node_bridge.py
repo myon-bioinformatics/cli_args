@@ -1,5 +1,11 @@
 import json
 import os
+import selectors
+import shutil
+import signal
+import sys
+import tempfile
+import unittest
 import subprocess
 import textwrap
 from pathlib import Path
@@ -306,3 +312,109 @@ def test_package_json_declares_node_24_floor():
 
 def test_node_min_major_is_24():
     assert cli_args._NODE_MIN_MAJOR == 24
+
+
+class LauncherRegressionTests(unittest.TestCase):
+    """Real Node/Python regressions for the adopted shared launcher."""
+
+    def setUp(self):
+        self.node = shutil_which_node()
+        if self.node is None:
+            self.skipTest("Node 24+ is required for launcher regressions")
+        self.root = Path(__file__).resolve().parents[1]
+        self.tool = "cli_args"
+        self.env = dict(os.environ)
+        self.env["CLI_ARGS_PYTHON"] = sys.executable
+        self.env.pop("PY_LAUNCH_ERROR_FORMAT", None)
+
+    @unittest.skipIf(os.name == "nt", "POSIX signal forwarding contract")
+    def test_entry_forwards_repeated_signals_text(self):
+        self._check_repeated_signals(json_errors=False)
+
+    @unittest.skipIf(os.name == "nt", "POSIX signal forwarding contract")
+    def test_entry_forwards_repeated_signals_json(self):
+        self._check_repeated_signals(json_errors=True)
+
+    def _check_repeated_signals(self, *, json_errors):
+        # Wait for each acknowledgement before sending the next signal, so
+        # repeated SIGINT cannot coalesce and no timing sleeps are needed.
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            (root / "vendor").mkdir()
+            shutil.copyfile(self.root / "vendor/py_launch.cjs", root / "vendor/py_launch.cjs")
+            shutil.copyfile(self.root / f"{self.tool}.cjs", root / f"{self.tool}.cjs")
+            (root / f"{self.tool}.py").write_text(
+                "import signal, time\n"
+                "signal.signal(signal.SIGINT, lambda *_: print('ACK', flush=True))\n"
+                "print('READY', flush=True)\n"
+                "while True: time.sleep(60)\n",
+                encoding="utf-8",
+            )
+            env = dict(self.env, PY_LAUNCH_ERROR_FORMAT="json" if json_errors else "")
+            child = subprocess.Popen(
+                [self.node, str(root / f"{self.tool}.cjs")], env=env,
+                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
+                stderr=subprocess.PIPE, start_new_session=True,
+            )
+            try:
+                with selectors.DefaultSelector() as selector:
+                    selector.register(child.stdout, selectors.EVENT_READ)
+                    for expected, next_signal in [
+                        (b"READY\n", signal.SIGINT),
+                        (b"ACK\n", signal.SIGINT),
+                        (b"ACK\n", signal.SIGTERM),
+                    ]:
+                        self.assertTrue(selector.select(timeout=10), "child did not acknowledge forwarded signal")
+                        self.assertEqual(child.stdout.readline(), expected)
+                        child.send_signal(next_signal)
+                stdout, stderr = child.communicate(timeout=10)
+                self.assertEqual(child.returncode, 2)
+                self.assertEqual(stdout, b"")
+                if json_errors:
+                    error = json.loads(stderr)
+                    self.assertEqual(error["code"], "ESIGNAL")
+                    self.assertEqual(error["exit_code"], 2)
+                    self.assertIn("SIGTERM", error["message"])
+                else:
+                    self.assertIn(b"terminated by signal SIGTERM", stderr)
+            finally:
+                try:
+                    os.killpg(child.pid, signal.SIGKILL)
+                except ProcessLookupError:
+                    pass
+                child.communicate(timeout=10)
+
+    def test_entry_no_site_also_protects_interpreter_probe(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            marker = root / "site-hook-ran"
+            (root / "sitecustomize.py").write_text(
+                f"from pathlib import Path\nPath({str(marker)!r}).touch()\n", encoding="utf-8",
+            )
+            result = subprocess.run(
+                [self.node, str(self.root / f"{self.tool}.cjs"), "--help"],
+                env=dict(self.env, PYTHONPATH=str(root)), capture_output=True, timeout=30,
+            )
+            self.assertEqual(result.returncode, 0, result.stderr)
+            self.assertFalse(marker.exists(), "noSite must cover interpreter discovery too")
+
+    def test_discovery_honors_no_site_and_isolated_independently(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            marker = root / "site-hook-ran"
+            (root / "sitecustomize.py").write_text(
+                f"from pathlib import Path\nPath({str(marker)!r}).touch()\n", encoding="utf-8",
+            )
+            launcher = json.dumps(str(self.root / "vendor/py_launch.cjs"))
+            for no_site, isolated in [(False, False), (True, False), (False, True), (True, True)]:
+                with self.subTest(no_site=no_site, isolated=isolated):
+                    marker.unlink(missing_ok=True)
+                    options = json.dumps({"python": sys.executable, "noSite": no_site, "isolated": isolated})
+                    # Resolution alone must suppress the hook; testing only the
+                    # final Python child would miss the vulnerable version probe.
+                    result = subprocess.run(
+                        [self.node, "-e", f"require({launcher}).resolvePython({options});"],
+                        env=dict(self.env, PYTHONPATH=str(root)), capture_output=True, timeout=30,
+                    )
+                    self.assertEqual(result.returncode, 0, result.stderr)
+                    self.assertEqual(marker.exists(), not (no_site or isolated))
