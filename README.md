@@ -266,7 +266,7 @@ Evidence levels are kept distinct.
 
 For AI coding, prefer existing **machine-readable / NUL-safe / fail-fast / structured-field** CLI contracts over parsing human-oriented output. "Unglamorous but sturdy" arguments such as Git porcelain v2, `-z`/`%00`, curl diagnostics, and gh API pagination are actively added to regression evidence. Bidirectional interactive batch protocols are not implemented, and finite stdin input working is not stretched into a guarantee for resident processing.
 
-The host Python matrix is limited to fast core contracts and does not depend on Docker/systemd state. The Docker integration lane builds the test-only image in `tests/docker/Dockerfile` (`python:3.14.0-slim-bookworm`) and, separately from host-side Docker transport/Compose checks, verifies Git/curl/ls/journalctl/FFmpeg inside it with the same `cli_args.py` and pytest harness. `CLI_ARGS_CONTAINER_REAL=1` is baked into the test image itself; neither CI nor users need to toggle it. The host matrix lacks that marker, so the container-real suite skips automatically there and is enabled automatically inside the Docker image. The container-real suite is saved as its own JUnit rather than folded into a single outer test. The Docker image also uses the latest uv and the same uv.lock for test dependencies. Installing uv via apt/pip is test infrastructure only, not a runtime dependency of `cli_args.py`.
+The host Python matrix is limited to fast core contracts and does not depend on Docker/systemd state. The Docker integration lane builds the test-only image in `tests/docker/Dockerfile` (`python:3.15-slim`) and, separately from host-side Docker transport/Compose checks, verifies Git/curl/ls/journalctl/FFmpeg inside it with the same `cli_args.py` and pytest harness. `CLI_ARGS_CONTAINER_REAL=1` is baked into the test image itself; neither CI nor users need to toggle it. The host matrix lacks that marker, so the container-real suite skips automatically there and is enabled automatically inside the Docker image. The container-real suite is saved as its own JUnit rather than folded into a single outer test. The Docker image also uses the latest uv and the same uv.lock for test dependencies. Installing uv via apt/pip is test infrastructure only, not a runtime dependency of `cli_args.py`.
 
 If Git/curl/ls, etc. are missing from the host, host-real testcases skip with a reason. The Docker integration lane installs the needed binaries explicitly into the image, so skips are not allowed there. No external website or live auth is needed.
 
@@ -299,8 +299,8 @@ python -S -m unittest discover -s tests -p test_runtime_compatibility.py -v
 
 `pyproject.toml` is the canonical development dependency definition; legacy
 requirements files remain for downstream callers. Runtime metadata does not
-raise the source/vendoring floor to the development floor. CI pins setup-python
-v7.0.0 and setup-uv v10.3.0 by full commit SHA, and uses the latest uv. Setup actions
+raise the source/vendoring floor to the development floor. CI pins setup-uv v10.3.3 by full commit SHA, gets Python from it
+(`actions/setup-python` is not used), and uses uv 0.13.3. Setup actions
 using Node 24 require runner 2.327.1 or newer (GitHub-hosted runners are used).
 
 CI also exercises the stdlib runtime floor and Python 3.14 on Windows and macOS.
