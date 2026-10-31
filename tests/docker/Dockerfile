@@ -1,4 +1,4 @@
-FROM python:3.14.0-slim-bookworm
+FROM python:3.15-slim
 
 ENV DEBIAN_FRONTEND=noninteractive
 ENV CLI_ARGS_CONTAINER_REAL=1
