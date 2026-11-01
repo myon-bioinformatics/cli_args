@@ -304,10 +304,10 @@ def test_resolve_node_probe_runs_once(monkeypatch, tmp_path):
     assert calls["n"] == 1
 
 
-def test_package_json_declares_node_24_floor():
+def test_package_json_declares_node_26_floor():
     root = Path(__file__).resolve().parents[1]
     engines = json.loads((root / "package.json").read_text(encoding="utf-8"))["engines"]
-    assert engines["node"] == ">=24"
+    assert engines["node"] == ">=26"
 
 
 def test_node_min_major_is_24():
