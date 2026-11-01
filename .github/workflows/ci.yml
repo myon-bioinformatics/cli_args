@@ -285,7 +285,7 @@ jobs:
     uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-junit-identity.yml@9e3da7ae1846e9604ebc24bb5178f7de094a4e77
     with:
       commit-sha: ${{ github.event.pull_request.head.sha || github.sha }}
-      expected-reports: '["junit-py3.11/pytest-3.11.xml","junit-py3.12/pytest-3.12.xml","junit-py3.14/pytest-3.14.xml","junit-node-ubuntu-latest-24/node-ubuntu-latest-24.xml","junit-node-ubuntu-latest-latest/node-ubuntu-latest-latest.xml","junit-node-windows-latest-24/node-windows-latest-24.xml","junit-node-windows-latest-latest/node-windows-latest-latest.xml","junit-node-macos-latest-24/node-macos-latest-24.xml","junit-node-macos-latest-latest/node-macos-latest-latest.xml","junit-docker-integration/docker-integration.xml","junit-container-real/container-real.xml","junit-core-windows/core-windows.xml","junit-core-macos/core-macos.xml"]'
+      expected-reports: '["junit-py3.11/pytest-3.11.xml","junit-py3.12/pytest-3.12.xml","junit-py3.14/pytest-3.14.xml","junit-node-ubuntu-latest-26/node-ubuntu-latest-26.xml","junit-node-ubuntu-latest-latest/node-ubuntu-latest-latest.xml","junit-node-windows-latest-26/node-windows-latest-26.xml","junit-node-windows-latest-latest/node-windows-latest-latest.xml","junit-node-macos-latest-26/node-macos-latest-26.xml","junit-node-macos-latest-latest/node-macos-latest-latest.xml","junit-docker-integration/docker-integration.xml","junit-container-real/container-real.xml","junit-core-windows/core-windows.xml","junit-core-macos/core-macos.xml"]'
       artifact-pattern: "junit-*"
       output-artifact: failure-identity
 
