@@ -248,12 +248,12 @@ test("render rejects stdin larger than CLI_STDIN_MAX_BYTES", () => {
   );
 });
 
-test("assertNodeFloor rejects Node 22 and accepts Node 24", () => {
+test("assertNodeFloor rejects Node 22 and accepts Node 26", () => {
   const {assertNodeFloor, NODE_MIN_MAJOR} = require(path.join(ROOT, "cli_args.cjs"));
-  assert.equal(NODE_MIN_MAJOR, 24);
-  assert.throws(() => assertNodeFloor("v22.14.0"), /Node 24\+/);
-  assert.throws(() => assertNodeFloor("18.0.0"), /Node 24\+/);
-  assert.doesNotThrow(() => assertNodeFloor("v24.0.0"));
+  assert.equal(NODE_MIN_MAJOR, 26);
+  assert.throws(() => assertNodeFloor("v22.14.0"), /Node 26\+/);
+  assert.throws(() => assertNodeFloor("18.0.0"), /Node 26\+/);
+  assert.doesNotThrow(() => assertNodeFloor("v26.0.0"));
   const major = Number.parseInt(String(process.versions.node).split(".")[0], 10);
   assert.ok(major >= NODE_MIN_MAJOR, process.versions.node);
 });
