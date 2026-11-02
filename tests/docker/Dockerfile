@@ -9,8 +9,8 @@ RUN apt-get update \
 WORKDIR /workspace
 COPY cli_args.py pytest.ini pyproject.toml uv.lock ./
 COPY tests ./tests
-RUN python -m pip install --no-cache-dir "uv>=0.13.3" \
-    && uv sync --locked --python "$(command -v python)"
+COPY --from=ghcr.io/astral-sh/uv:0.13.6 /uv /uvx /bin/
+RUN uv sync --locked --python "$(command -v python)"
 ENV PATH="/workspace/.venv/bin:$PATH"
 
 CMD ["uv", "run", "--locked", "pytest", "-q", "tests/test_container_commands.py"]

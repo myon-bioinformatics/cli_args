@@ -79,6 +79,9 @@ class CiPythonSetupTests(unittest.TestCase):
         self.assertEqual(dockerfile.splitlines()[0], "FROM python:3.14.0-slim-bookworm")
         self.assertIn('CMD ["uv", "run", "--locked", "pytest"', dockerfile)
         self.assertIn("uv sync --locked", dockerfile)
+        # uv comes from its own image, not from pip, and the lock decides every package.
+        self.assertIn("COPY --from=ghcr.io/astral-sh/uv:", dockerfile)
+        self.assertNotIn("pip install", dockerfile)
         self.assertIn("python:3.14.0-slim-bookworm", (ROOT / "README.md").read_text(encoding="utf-8"))
         self.assertIn("uv run --locked pytest", job("ci.yml", "test"))
 
