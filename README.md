@@ -60,7 +60,7 @@ The meaning of each command and its valid combinations are defined by the caller
 
 `node_command(target, *args, node=None, node_flags=())` builds `[node, *node_flags, target, *args]`. `run_node(...)` is a thin wrapper over `run_command()` and keeps the existing execution contract (`timeout` / `max_output_bytes` / `env` / `dry_run`, etc.). `dry_run` rejects non-bool values with `TypeError`; a string is never treated as false and executed. With `dry_run=True`, neither the `node --version` probe nor a child process runs; only the argv[0] token following the lookup order is built (the last fallback is the literal `node`). `is_node_target(path)` checks for `.js` / `.cjs` / `.mjs`. `node_or_command([])` raises `ValueError`, as `Command(())` does.
 
-Node lookup order: the `node=` argument, `--node`, and `CLI_ARGS_NODE` are **explicit** and do not fall back on failure. After those, the `NODE` environment variable and `shutil.which('node')` are tried. Windows `.cmd` / `.bat` wrappers are rejected; the executable found is checked once with `node --version` within 5 seconds and must be Node 24 or later (the probe is skipped under `dry_run`). Not found, too old, or timed out raises `NodeNotFoundError` (a `FileNotFoundError` subclass, message `cli_args: node …`). The child's exit code is passed through in `returncode`. `shell=True` is never used. `engines.node` in `package.json` is also **>=24**.
+Node lookup order: the `node=` argument, `--node`, and `CLI_ARGS_NODE` are **explicit** and do not fall back on failure. After those, the `NODE` environment variable and `shutil.which('node')` are tried. Windows `.cmd` / `.bat` wrappers are rejected; the executable found is checked once with `node --version` within 5 seconds and must be Node 26 or later (the probe is skipped under `dry_run`). Not found, too old, or timed out raises `NodeNotFoundError` (a `FileNotFoundError` subclass, message `cli_args: node …`). The child's exit code is passed through in `returncode`. `shell=True` is never used. `engines.node` in `package.json` is also **>=26**.
 
 To opt in from a CLI, `add_node_arguments(parser)` adds `--node PATH` and a repeatable `--node-flag` (use the `--node-flag=--import=x` form when the value starts with `-`); call `node_or_command(argv, node=args.node, node_flags=args.node_flags)` right before building the argv to run. It wraps the argv with Node only when the first token is `.js` / `.cjs` / `.mjs`, and otherwise returns `Command(argv)` unchanged. Existing argv semantics are unchanged unless you use this helper.
 
@@ -73,7 +73,7 @@ command = node_or_command(["playwright.cjs", "test", "--list"], node_flags=["--n
 
 ## Calling `cli_args.py` from Node.js
 
-To use the Python-side `run_command` / `render_output` from Node 24+, require `cli_args.cjs` at the repository root. `cli_args.cjs` rejects Node older than 24 at call time. It only launches `cli_args.py run` / `render` through the parent repository `myon-bioinformatics`'s shared launcher `vendor/py_launch.cjs`; it never launches Node from Node. `shell: true` is not used. The stdin limit is `py_launch`'s `maxInputBytes` (`CLI_STDIN_MAX_BYTES`, 4 MiB), and response capture is `responseMaxBytes` (96 MiB; `maxBuffer` adds only the shared 512-byte margin).
+To use the Python-side `run_command` / `render_output` from Node 26+, require `cli_args.cjs` at the repository root. `cli_args.cjs` rejects Node older than 26 at call time. It only launches `cli_args.py run` / `render` through the parent repository `myon-bioinformatics`'s shared launcher `vendor/py_launch.cjs`; it never launches Node from Node. `shell: true` is not used. The stdin limit is `py_launch`'s `maxInputBytes` (`CLI_STDIN_MAX_BYTES`, 4 MiB), and response capture is `responseMaxBytes` (96 MiB; `maxBuffer` adds only the shared 512-byte margin).
 
 | Lookup | Meaning |
 |---|---|
@@ -103,7 +103,7 @@ The shared launcher's opt-in `isolated` flag also covers discovery; it remains o
 for this entry. On POSIX, repeated SIGINT/SIGTERM are forwarded until the Python
 child exits, including when it handles an earlier signal and keeps running.
 Launcher signal failures still exit 2 in text and JSON diagnostic modes.
-Node >=24 and the existing runtime CI lanes are unchanged.
+Node >=26 and the existing runtime CI lanes are unchanged.
 
 ## Passing stdin explicitly (collected from cross-repo use)
 
