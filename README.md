@@ -97,7 +97,7 @@ Running it directly as a CLI has the same contract as `node cli_args.cjs run` (J
 Node adds `response_max_bytes: CLI_RUN_RESPONSE_MAX_BYTES` (96 MiB) to `run` requests, and Python checks **the UTF-8 length of the JSON it actually serialized** against that limit before writing to stdout. Exceeding it exits **1** (`response exceeds response_max_bytes` on stderr). The Node-side spawn buffer is only `py_launch`'s `responseMaxBytes` (with `CLI_HOST_RESPONSE_MARGIN_BYTES` added internally); no JSON size estimate is used. `render` performs the same check with `--response-max-bytes CLI_RENDER_RESPONSE_MAX_BYTES`. `run` JSON always includes `output_limited` (`false` is not omitted).
 
 The vendored launcher is byte-for-byte from parent commit
-`1f6f1e345f640827703e2872151a73b4cbdfd382` (parent PR #194).
+`384f5dd532076062f7833038764e9a62322c387c` (parent PR #194).
 `noSite: true` now covers interpreter discovery as well as execution.
 The shared launcher's opt-in `isolated` flag also covers discovery; it remains off
 for this entry. On POSIX, repeated SIGINT/SIGTERM are forwarded until the Python
