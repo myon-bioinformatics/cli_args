@@ -1,5 +1,5 @@
 "use strict";
-/** Thin Node API (Node 24+): Python owns run_command/render_output via cli_args.py run/render. */
+/** Thin Node API (Node 26+): Python owns run_command/render_output via cli_args.py run/render. */
 const path = require("node:path");
 const {
   run,
@@ -26,7 +26,7 @@ const CLI_RENDER_RESPONSE_MAX_BYTES = 96 * 1024 * 1024;
 /** Keep in sync with cli_args.CLI_HOST_RESPONSE_MARGIN_BYTES */
 const CLI_HOST_RESPONSE_MARGIN_BYTES = HOST_RESPONSE_MARGIN_BYTES;
 /** Keep in sync with cli_args._NODE_MIN_MAJOR */
-const NODE_MIN_MAJOR = 24;
+const NODE_MIN_MAJOR = 26;
 
 class CliArgsRequestError extends Error {
   constructor(message) {

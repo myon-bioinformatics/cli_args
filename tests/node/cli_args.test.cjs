@@ -53,7 +53,7 @@ test("vendored py_launch.cjs matches vendor.lock.json", () => {
     crypto.createHash("sha1").update(Buffer.concat([Buffer.from(`blob ${data.length}\0`), data])).digest("hex"),
     entry.blob_sha,
   );
-  assert.equal(entry.commit, "1116d5c4f55d25af4d21cfe9b3c88f49d3a476fa");
+  assert.equal(entry.commit, "384f5dd532076062f7833038764e9a62322c387c");
 });
 
 test("cli_args.cjs does not spawn node", () => {
@@ -248,12 +248,12 @@ test("render rejects stdin larger than CLI_STDIN_MAX_BYTES", () => {
   );
 });
 
-test("assertNodeFloor rejects Node 22 and accepts Node 24", () => {
+test("assertNodeFloor rejects Node 22 and accepts Node 26", () => {
   const {assertNodeFloor, NODE_MIN_MAJOR} = require(path.join(ROOT, "cli_args.cjs"));
-  assert.equal(NODE_MIN_MAJOR, 24);
-  assert.throws(() => assertNodeFloor("v22.14.0"), /Node 24\+/);
-  assert.throws(() => assertNodeFloor("18.0.0"), /Node 24\+/);
-  assert.doesNotThrow(() => assertNodeFloor("v24.0.0"));
+  assert.equal(NODE_MIN_MAJOR, 26);
+  assert.throws(() => assertNodeFloor("v22.14.0"), /Node 26\+/);
+  assert.throws(() => assertNodeFloor("18.0.0"), /Node 26\+/);
+  assert.doesNotThrow(() => assertNodeFloor("v26.0.0"));
   const major = Number.parseInt(String(process.versions.node).split(".")[0], 10);
   assert.ok(major >= NODE_MIN_MAJOR, process.versions.node);
 });

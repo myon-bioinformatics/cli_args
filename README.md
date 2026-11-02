@@ -60,7 +60,7 @@ The meaning of each command and its valid combinations are defined by the caller
 
 `node_command(target, *args, node=None, node_flags=())` builds `[node, *node_flags, target, *args]`. `run_node(...)` is a thin wrapper over `run_command()` and keeps the existing execution contract (`timeout` / `max_output_bytes` / `env` / `dry_run`, etc.). `dry_run` rejects non-bool values with `TypeError`; a string is never treated as false and executed. With `dry_run=True`, neither the `node --version` probe nor a child process runs; only the argv[0] token following the lookup order is built (the last fallback is the literal `node`). `is_node_target(path)` checks for `.js` / `.cjs` / `.mjs`. `node_or_command([])` raises `ValueError`, as `Command(())` does.
 
-Node lookup order: the `node=` argument, `--node`, and `CLI_ARGS_NODE` are **explicit** and do not fall back on failure. After those, the `NODE` environment variable and `shutil.which('node')` are tried. Windows `.cmd` / `.bat` wrappers are rejected; the executable found is checked once with `node --version` within 5 seconds and must be Node 24 or later (the probe is skipped under `dry_run`). Not found, too old, or timed out raises `NodeNotFoundError` (a `FileNotFoundError` subclass, message `cli_args: node …`). The child's exit code is passed through in `returncode`. `shell=True` is never used. `engines.node` in `package.json` is also **>=24**.
+Node lookup order: the `node=` argument, `--node`, and `CLI_ARGS_NODE` are **explicit** and do not fall back on failure. After those, the `NODE` environment variable and `shutil.which('node')` are tried. Windows `.cmd` / `.bat` wrappers are rejected; the executable found is checked once with `node --version` within 5 seconds and must be Node 26 or later (the probe is skipped under `dry_run`). Not found, too old, or timed out raises `NodeNotFoundError` (a `FileNotFoundError` subclass, message `cli_args: node …`). The child's exit code is passed through in `returncode`. `shell=True` is never used. `engines.node` in `package.json` is also **>=26**.
 
 To opt in from a CLI, `add_node_arguments(parser)` adds `--node PATH` and a repeatable `--node-flag` (use the `--node-flag=--import=x` form when the value starts with `-`); call `node_or_command(argv, node=args.node, node_flags=args.node_flags)` right before building the argv to run. It wraps the argv with Node only when the first token is `.js` / `.cjs` / `.mjs`, and otherwise returns `Command(argv)` unchanged. Existing argv semantics are unchanged unless you use this helper.
 
@@ -73,7 +73,7 @@ command = node_or_command(["playwright.cjs", "test", "--list"], node_flags=["--n
 
 ## Calling `cli_args.py` from Node.js
 
-To use the Python-side `run_command` / `render_output` from Node 24+, require `cli_args.cjs` at the repository root. `cli_args.cjs` rejects Node older than 24 at call time. It only launches `cli_args.py run` / `render` through the parent repository `myon-bioinformatics`'s shared launcher `vendor/py_launch.cjs`; it never launches Node from Node. `shell: true` is not used. The stdin limit is `py_launch`'s `maxInputBytes` (`CLI_STDIN_MAX_BYTES`, 4 MiB), and response capture is `responseMaxBytes` (96 MiB; `maxBuffer` adds only the shared 512-byte margin).
+To use the Python-side `run_command` / `render_output` from Node 26+, require `cli_args.cjs` at the repository root. `cli_args.cjs` rejects Node older than 26 at call time. It only launches `cli_args.py run` / `render` through the parent repository `myon-bioinformatics`'s shared launcher `vendor/py_launch.cjs`; it never launches Node from Node. `shell: true` is not used. The stdin limit is `py_launch`'s `maxInputBytes` (`CLI_STDIN_MAX_BYTES`, 4 MiB), and response capture is `responseMaxBytes` (96 MiB; `maxBuffer` adds only the shared 512-byte margin).
 
 | Lookup | Meaning |
 |---|---|
@@ -97,13 +97,13 @@ Running it directly as a CLI has the same contract as `node cli_args.cjs run` (J
 Node adds `response_max_bytes: CLI_RUN_RESPONSE_MAX_BYTES` (96 MiB) to `run` requests, and Python checks **the UTF-8 length of the JSON it actually serialized** against that limit before writing to stdout. Exceeding it exits **1** (`response exceeds response_max_bytes` on stderr). The Node-side spawn buffer is only `py_launch`'s `responseMaxBytes` (with `CLI_HOST_RESPONSE_MARGIN_BYTES` added internally); no JSON size estimate is used. `render` performs the same check with `--response-max-bytes CLI_RENDER_RESPONSE_MAX_BYTES`. `run` JSON always includes `output_limited` (`false` is not omitted).
 
 The vendored launcher is byte-for-byte from parent commit
-`1116d5c4f55d25af4d21cfe9b3c88f49d3a476fa` (parent PR #171).
+`384f5dd532076062f7833038764e9a62322c387c` (parent PR #194).
 `noSite: true` now covers interpreter discovery as well as execution.
 The shared launcher's opt-in `isolated` flag also covers discovery; it remains off
 for this entry. On POSIX, repeated SIGINT/SIGTERM are forwarded until the Python
 child exits, including when it handles an earlier signal and keeps running.
 Launcher signal failures still exit 2 in text and JSON diagnostic modes.
-Node >=24 and the existing runtime CI lanes are unchanged.
+Node >=26 and the existing runtime CI lanes are unchanged.
 
 ## Passing stdin explicitly (collected from cross-repo use)
 
@@ -257,7 +257,7 @@ Evidence levels are kept distinct.
 | journal/systemd backing service | **Not measured** | The default CI image does not start systemd PID 1 or a journal service, so System-service-real is not claimed |
 | Docker | Host-real → Container-real | Exact transport of `--`, empty strings, leading hyphens, spaces, and Unicode argv from the host's `cli_args.Command` into a locally built image |
 | Docker Compose | Host-real | Runs repeated `-f` + `config --services` referencing only the locally built image. No registry/network needed |
-| Node / npm | Host-real | Argv building, lookup, and version probe for `node_command` / `run_node` / `node_or_command` (Node 24+, explicit-choice failures, `.cmd` rejection) and real `.cjs` / `.mjs` runs (`--`, empty strings, leading hyphens, Unicode paths, timeout and exit code). CI has dedicated Node 24 and latest lanes on Ubuntu/Windows/macOS. Transport of `npm run ... -- <args>` is also measured with a temp package + local JS probe |
+| Node / npm | Host-real | Argv building, lookup, and version probe for `node_command` / `run_node` / `node_or_command` (Node 26+, explicit-choice failures, `.cmd` rejection) and real `.cjs` / `.mjs` runs (`--`, empty strings, leading hyphens, Unicode paths, timeout and exit code). CI has dedicated Node 26 and latest lanes on Ubuntu/Windows/macOS. Transport of `npm run ... -- <args>` is also measured with a temp package + local JS probe |
 | Playwright CLI shape | Construct-only | Records the direct Node CLI form actually used in the org as a past pattern, avoiding greedy `--project value` and verifying `--project=value` + `--grep` + spec order. Real browser/parser evidence lives in browser-test-kit |
 | gh | Host-real binary + Construct-only/stub | `gh --version` uses the real binary. Exact argv for API subcommands, repeated headers, `--jq`, `--paginate --slurp`, `--cache 1h`, and typed `-F` / raw `-f` fields recorded as past patterns. Live auth/network not measured |
 | Flutter / Dart | Construct-only | Representative argv for `flutter build web -t ... --dart-define=...` and `dart run ... --output ...` recorded as past patterns. Bootstrap/build is measured in the Flutter repo |
@@ -270,7 +270,7 @@ The host Python matrix is limited to fast core contracts and does not depend on 
 
 If Git/curl/ls, etc. are missing from the host, host-real testcases skip with a reason. The Docker integration lane installs the needed binaries explicitly into the image, so skips are not allowed there. No external website or live auth is needed.
 
-Ubuntu CI saves, as separate artifacts, the JUnit for Python 3.11 / 3.12 / 3.14 plus the Node bridge (Ubuntu/Windows/macOS × Node 24 / latest, 6 in total) and the Docker integration JUnit. Windows/macOS also run the stdlib/core contract and `tests/test_node_bridge.py` on Python 3.12 to check OS-specific subprocess/path/newline differences cheaply. **All 13 reports** — 3 host Python, 6 Node, 1 Docker transport/Compose, 1 container-real CLI, and 2 Windows/macOS core — go to the shared exact-report collector. **Being able to build argv, passing it to a stub, a real CLI running, and measuring live/service integration are separate contracts.** The core Python contract on Windows/macOS is measured. Live-authenticated gh, a real Playwright browser/parser, Flutter/Dart bootstrap/build, xprobe, and a systemd-backed journal service are not verified in this initial version.
+Ubuntu CI saves, as separate artifacts, the JUnit for Python 3.11 / 3.12 / 3.14 plus the Node bridge (Ubuntu/Windows/macOS × Node 26 / latest, 6 in total) and the Docker integration JUnit. Windows/macOS also run the stdlib/core contract and `tests/test_node_bridge.py` on Python 3.12 to check OS-specific subprocess/path/newline differences cheaply. **All 13 reports** — 3 host Python, 6 Node, 1 Docker transport/Compose, 1 container-real CLI, and 2 Windows/macOS core — go to the shared exact-report collector. **Being able to build argv, passing it to a stub, a real CLI running, and measuring live/service integration are separate contracts.** The core Python contract on Windows/macOS is measured. Live-authenticated gh, a real Playwright browser/parser, Flutter/Dart bootstrap/build, xprobe, and a systemd-backed journal service are not verified in this initial version.
 
 ```bash
 uv sync --locked
