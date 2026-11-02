@@ -167,7 +167,7 @@ def test_resolve_node_rejects_old_version(tmp_path, monkeypatch):
     with pytest.raises(NodeNotFoundError, match="26"):
         resolve_node(fake)
     reset_node_probe_cache()
-    accepted = register(tmp_path / "node-24", version="v26.0.0")
+    accepted = register(tmp_path / "node-26", version="v26.0.0")
     assert resolve_node(accepted) == accepted
 
 
