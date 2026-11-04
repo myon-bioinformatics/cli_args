@@ -1,4 +1,4 @@
-"""Reusable CLI building blocks. Python 3.10+, standard library only.
+"""Reusable CLI building blocks. Python 3.11+, standard library only.
 
 Importing this module never parses argv or starts a subprocess.
 External tools keep their own option semantics; pass their argv unchanged.

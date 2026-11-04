@@ -2,7 +2,7 @@
 name = "cli-args-dev"
 # Keep in sync with cli_args.__version__ (enforced in tests/test_cli_args_main.py).
 version = "0.0.0"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 dependencies = []
 
 [dependency-groups]
@@ -11,7 +11,6 @@ dev = ["pytest>=8"]
 # Vendored/source runtime has no dependencies. uv manages contributor tools only.
 [tool.uv]
 package = false
-environments = ["python_version >= '3.11'"]
 
 [tool.uv.dependency-groups]
 dev = { requires-python = ">=3.11" }
