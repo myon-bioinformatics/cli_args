@@ -8,7 +8,7 @@
 
 A single-file, standard-library-only Python toolkit for reusable CLI argument definitions, validation, command construction, execution, and JSON/text output, backed by practical CLI tests.
 
-Python 3.10+. Vendor it by copying `cli_args.py`. The module runs on the standard library alone and does no argument parsing or command execution at import time. Packaging for pip is out of scope for the initial version.
+Python 3.11+ (declared in `pyproject.toml`). Vendor it by copying `cli_args.py`. The module runs on the standard library alone and does no argument parsing or command execution at import time. Packaging for pip is out of scope for the initial version.
 
 ## Reusing argument definitions
 
@@ -285,8 +285,10 @@ This records "which usage patterns were reproduced and verified", not speed benc
 
 ## Runtime and development Python policy
 
-The standard-library runtime supports Python 3.10+; this change preserves the
-existing runtime floor. The separate `runtime-compatibility` CI lane executes
+The standard-library runtime, including standalone and vendored copies, supports
+Python 3.11+. This is the supported/tested floor, not a claim that older
+interpreters cannot execute any part of the module. The separate
+`runtime-compatibility` CI lane executes
 behavior tests with `python -S`, without installing pytest or any third-party
 package. Development/test environments use Python 3.11+ and a committed uv lock:
 
@@ -297,9 +299,19 @@ node --test tests/node/cli_args.test.cjs
 python -S -m unittest discover -s tests -p test_runtime_compatibility.py -v
 ```
 
-`pyproject.toml` is the canonical development dependency definition; legacy
-requirements files remain for downstream callers. Runtime metadata does not
-raise the source/vendoring floor to the development floor. CI pins setup-uv v10.3.3 by full commit SHA, gets Python from it
+`pyproject.toml` is the canonical Python requirement and development dependency
+definition: `project.requires-python = ">=3.11"` applies to source runtime support
+as well as development. Legacy requirements files remain for downstream callers.
+A copied `.py` file does not read project metadata; consumers must select Python
+3.11+ themselves. This policy does not update consumers' vendored files or
+interpreter settings.
+
+The Node entry uses a pinned shared launcher that still probes for Python 3.9+;
+that discovery threshold is not this tool's support policy. Set `CLI_ARGS_PYTHON`
+or `opts.python` to a Python 3.11+ executable for supported use. The launcher and
+its vendor pin are unchanged.
+
+CI pins setup-uv v10.3.3 by full commit SHA, gets Python from it
 (`actions/setup-python` is not used), and uses the latest uv. Setup actions
 using Node 24 require runner 2.327.1 or newer (GitHub-hosted runners are used).
 

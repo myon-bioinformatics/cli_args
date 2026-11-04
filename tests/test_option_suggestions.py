@@ -1,4 +1,4 @@
-"""Executable contract for opt-in stdlib difflib hints (Python 3.10+)."""
+"""Executable contract for opt-in stdlib difflib hints (Python 3.11+)."""
 import argparse
 import json
 from pathlib import Path

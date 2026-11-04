@@ -120,7 +120,7 @@ positional data, hidden options and child-command argv after the mandatory
 `--` boundary are not guessed or rewritten. Hints use structured argv and the
 actual unrecognized tokens, never reparse diagnostic text. The ASCII option-name filter is intentionally conservative.
 Options expanded from argument files are not guessed. `parse_known_args`
-retains its ordinary behavior. Python 3.10+ and `python -S` are supported.
+retains its ordinary behavior. Python 3.11+ and `python -S` are supported.
 Tests exercise both the opt-in parser and a real Python subprocess one-liner.
 
 Try it:
@@ -152,7 +152,7 @@ in production code while pytest checks its behavioral boundaries.
 - CSV and ConfigParser roundtrips;
 - SHA-256 and URL quote/unquote behavior.
 
-These tests are not here because the Python standard library itself needs retesting. They are evidence for **the repository's recommended usage contract and Python 3.10+ floor**, and they prevent documentation examples from drifting into newer-only APIs.
+These tests are not here because the Python standard library itself needs retesting. They are evidence for **the repository's recommended usage contract and Python 3.11+ floor**, and they prevent documentation examples from drifting into newer-only APIs.
 
 ## What not to do
 
