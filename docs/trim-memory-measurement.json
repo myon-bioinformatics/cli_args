@@ -1,0 +1,47 @@
+{
+  "baseline_sha": "8663066107021ebe3519593dfc02401494c47751",
+  "python": "3.12.14 (main, Aug 25 2026, 14:00:49) [Clang 22.1.3 ]",
+  "lines": 100000,
+  "head": 40,
+  "tail": 40,
+  "samples": {
+    "baseline": [
+      {
+        "ns_under_tracemalloc": 55514710,
+        "peak_bytes": 7607007
+      },
+      {
+        "ns_under_tracemalloc": 55775789,
+        "peak_bytes": 7607007
+      },
+      {
+        "ns_under_tracemalloc": 52844523,
+        "peak_bytes": 7607007
+      }
+    ],
+    "spans": [
+      {
+        "ns_under_tracemalloc": 289558567,
+        "peak_bytes": 133911
+      },
+      {
+        "ns_under_tracemalloc": 284924401,
+        "peak_bytes": 14622
+      },
+      {
+        "ns_under_tracemalloc": 287999634,
+        "peak_bytes": 14622
+      }
+    ]
+  },
+  "median": {
+    "baseline": {
+      "ns_under_tracemalloc": 55514710,
+      "peak_bytes": 7607007
+    },
+    "spans": {
+      "ns_under_tracemalloc": 287999634,
+      "peak_bytes": 14622
+    }
+  }
+}

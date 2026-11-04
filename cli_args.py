@@ -8,6 +8,7 @@ from __future__ import annotations
 import argparse
 import base64
 from difflib import get_close_matches
+from collections import deque
 from collections.abc import Sequence as SequenceABC
 from dataclasses import asdict, dataclass, field
 import json
@@ -563,25 +564,54 @@ def pytest_command(paths: Sequence[str] = (), *, quiet: bool = False,
             .passthrough(extra).positional(*path_tokens))
 
 
-def trim_output(text: str, *, head: int = 40, tail: int = 40) -> str:
+def trim_output(text: str, *, head: int = 40, tail: int = 40, bounded_memory: bool = False) -> str:
     """Keep the first ``head`` and last ``tail`` lines with an explicit omission marker.
 
     A log cut with ``head``/``tail`` silently looks complete; here the gap is a line
     ``... N line(s) omitted ...`` so a reader (or an agent) knows output is missing.
     Text that already fits is returned unchanged; a trailing newline is kept.
+    ``bounded_memory=True`` retains only head/tail line spans instead of splitting
+    all lines. This reduces temporary memory usage but can be slower; the input
+    string remains in memory. ``bounded_memory`` must be a bool.
     """
     if not isinstance(text, str):
         raise TypeError("text must be str")
     for value in (head, tail):
         if type(value) is not int or value < 0:
             raise ValueError("head and tail must be nonnegative integers")
-    lines = text.splitlines(keepends=True)
-    if len(lines) <= head + tail:
-        return text
-    omitted = len(lines) - head - tail
-    kept_tail = lines[len(lines) - tail:] if tail else []
+    if type(bounded_memory) is not bool:
+        raise TypeError("bounded_memory must be bool")
+    if not bounded_memory:
+        lines = text.splitlines(keepends=True)
+        if len(lines) <= head + tail:
+            return text
+        omitted = len(lines) - head - tail
+        kept_tail = lines[-tail:] if tail else []
+        first = None
+    else:
+        # Match exactly str.splitlines boundaries without allocating every line.
+        first = []
+        last = deque(maxlen=tail)
+        start = total = 0
+        for match in re.finditer(r"\r\n|[\n\r\v\f\x1c-\x1e\x85\u2028\u2029]", text):
+            span = (start, match.end())
+            if total < head:
+                first.append(span)
+            last.append(span)
+            total += 1
+            start = match.end()
+        if start < len(text):
+            span = (start, len(text))
+            if total < head:
+                first.append(span)
+            last.append(span)
+            total += 1
+        if total <= head + tail:
+            return text
+        omitted = total - head - tail
+        kept_tail = [text[a:b] for a, b in last]
     gap = f"... {omitted} line(s) omitted ...\n"
-    body = "".join(lines[:head])
+    body = "".join(text[a:b] for a, b in first) if bounded_memory else "".join(lines[:head])
     if body and not body.endswith(("\n", "\r")):
         body += "\n"
     return body + gap + "".join(kept_tail)
