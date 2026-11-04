@@ -31,7 +31,8 @@ def main():
             duration = time.perf_counter_ns()-start
             _, peak = tracemalloc.get_traced_memory()
             tracemalloc.stop()
-            assert result == expected
+            if result != expected:
+                raise SystemExit(f"trim output mismatch: {name}")
             samples[name].append({'ns_under_tracemalloc':duration, 'peak_bytes':peak})
     print(json.dumps({'baseline_sha':sha, 'python':sys.version, 'lines':100000,
         'head':40,'tail':40,'samples':samples,
