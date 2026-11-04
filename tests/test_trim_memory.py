@@ -31,6 +31,15 @@ class TrimMemoryTests(unittest.TestCase):
                     if len(text.splitlines()) <= head+tail:
                         self.assertIs(cli_args.trim_output(text, head=head, tail=tail, bounded_memory=True), text)
 
+    def test_bounded_memory_requires_bool(self):
+        for value in (None, 0, 1, "", "true", [], {}):
+            with self.subTest(value=value):
+                with self.assertRaisesRegex(TypeError, "^bounded_memory must be bool$"):
+                    cli_args.trim_output("line\n", bounded_memory=value)
+        for value in (False, True):
+            text = "line\n"
+            self.assertIs(cli_args.trim_output(text, bounded_memory=value), text)
+
     def test_large_log(self):
         text = 'line\n' * 100000
         self.assertEqual(cli_args.trim_output(text, head=2, tail=2, bounded_memory=True), reference(text, 2, 2))

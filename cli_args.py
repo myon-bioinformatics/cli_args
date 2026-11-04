@@ -570,6 +570,9 @@ def trim_output(text: str, *, head: int = 40, tail: int = 40, bounded_memory: bo
     A log cut with ``head``/``tail`` silently looks complete; here the gap is a line
     ``... N line(s) omitted ...`` so a reader (or an agent) knows output is missing.
     Text that already fits is returned unchanged; a trailing newline is kept.
+    ``bounded_memory=True`` retains only head/tail line spans instead of splitting
+    all lines. This reduces temporary memory usage but can be slower; the input
+    string remains in memory. ``bounded_memory`` must be a bool.
     """
     if not isinstance(text, str):
         raise TypeError("text must be str")
@@ -577,7 +580,7 @@ def trim_output(text: str, *, head: int = 40, tail: int = 40, bounded_memory: bo
         if type(value) is not int or value < 0:
             raise ValueError("head and tail must be nonnegative integers")
     if type(bounded_memory) is not bool:
-        raise ValueError("bounded_memory must be boolean")
+        raise TypeError("bounded_memory must be bool")
     if not bounded_memory:
         lines = text.splitlines(keepends=True)
         if len(lines) <= head + tail:
