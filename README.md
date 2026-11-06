@@ -149,6 +149,8 @@ write_output({"ok": True}, format="json", output="result.json", overwrite=False)
 
 `trim_output(text, head=40, tail=40)` keeps the first `head` lines and the last `tail` lines, with a single `... N line(s) omitted ...` line in between. Output cut with plain `head`/`tail` looks complete even when lines are missing, so the omission is made explicit for the reader (human or agent). Output that fits is returned unchanged.
 
+`trim_output(text, bounded_memory=True)` is an opt-in (Python only) that retains just the head/tail line spans instead of splitting every line; the default behavior and speed are unchanged. The input string itself is still held, so this is not a streaming API. See [the measurement and limits](docs/trim-memory.md).
+
 `pytest_summary(output)` returns only the lines in captured pytest output that decide the result: the final `N failed, M passed in Xs` line (`summary`/`counts`), `-ra` `FAILED`/`ERROR` lines (`failed`/`errors`), pytest-cov's `TOTAL` line and the `Required test coverage` verdict (`coverage`), and `deciding_lines` with the first `E` line of each failure and any `INTERNALERROR` (60 lines by default; excess sets `truncated`).
 
 ```python
