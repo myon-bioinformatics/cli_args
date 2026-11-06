@@ -128,7 +128,7 @@ result = run_command(git, stdin=b"-leading name.txt\0", timeout=10)
 
 `run_command()` handles only synchronous, finite input; file objects and iterators are not accepted as stdin. Streaming/bidirectional batch protocols and long-running resident processes are not supported. Dry-run validates type and UTF-8 encoding but never prints the input, so secrets are not leaked. The existing UTF-8 replacement policy for stdout/stderr and the exit/timeout contract are unchanged.
 
-Cross-repo examples: `flutter_navigation_basic`'s stdin JSON, `browser-test-kit`'s stdin-based child-process tests, and external CLI wrappers such as `gh_identity`. Argument parsing and domain-specific rules stay in each project. Git NUL pathspecs and finite `git cat-file --batch-command --buffer -Z` calls are **verified against real Git**. Interactive, long-running bidirectional sessions are not supported.
+Cross-repo examples: `flutter_navigation_basic`'s stdin JSON, `BrowserTestKit`'s stdin-based child-process tests, and external CLI wrappers such as `gh_identity`. Argument parsing and domain-specific rules stay in each project. Git NUL pathspecs and finite `git cat-file --batch-command --buffer -Z` calls are **verified against real Git**. Interactive, long-running bidirectional sessions are not supported.
 
 ## Output protection and byte limits
 
@@ -260,7 +260,7 @@ Evidence levels are kept distinct.
 | Docker | Host-real → Container-real | Exact transport of `--`, empty strings, leading hyphens, spaces, and Unicode argv from the host's `cli_args.Command` into a locally built image |
 | Docker Compose | Host-real | Runs repeated `-f` + `config --services` referencing only the locally built image. No registry/network needed |
 | Node / npm | Host-real | Argv building, lookup, and version probe for `node_command` / `run_node` / `node_or_command` (Node 26+, explicit-choice failures, `.cmd` rejection) and real `.cjs` / `.mjs` runs (`--`, empty strings, leading hyphens, Unicode paths, timeout and exit code). CI has dedicated Node 26 and latest lanes on Ubuntu/Windows/macOS. Transport of `npm run ... -- <args>` is also measured with a temp package + local JS probe |
-| Playwright CLI shape | Construct-only | Records the direct Node CLI form actually used in the org as a past pattern, avoiding greedy `--project value` and verifying `--project=value` + `--grep` + spec order. Real browser/parser evidence lives in browser-test-kit |
+| Playwright CLI shape | Construct-only | Records the direct Node CLI form actually used in the org as a past pattern, avoiding greedy `--project value` and verifying `--project=value` + `--grep` + spec order. Real browser/parser evidence lives in BrowserTestKit |
 | gh | Host-real binary + Construct-only/stub | `gh --version` uses the real binary. Exact argv for API subcommands, repeated headers, `--jq`, `--paginate --slurp`, `--cache 1h`, and typed `-F` / raw `-f` fields recorded as past patterns. Live auth/network not measured |
 | Flutter / Dart | Construct-only | Representative argv for `flutter build web -t ... --dart-define=...` and `dart run ... --output ...` recorded as past patterns. Bootstrap/build is measured in the Flutter repo |
 | FFmpeg | Container-real | FFmpeg is installed explicitly in the test-only image and processes a tiny lavfi source with `-f lavfi -i ... -f null -`. Multiple options/values and the special `-` output are measured |
