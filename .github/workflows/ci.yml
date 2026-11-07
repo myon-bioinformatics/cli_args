@@ -163,7 +163,7 @@ jobs:
           python -c "import os; from pathlib import Path; print(Path('.venv').resolve() / ('Scripts' if os.name == 'nt' else 'bin'))" >> "$GITHUB_PATH"
       # A cold build took 50 s: 23 s installing 227 apt packages (systemd, ffmpeg) and
       # 20 s gzip-compressing that layer. Reuse the layers from the GitHub Actions cache
-      # (default docker driver + containerd image store); only main writes the cache. (probe)
+      # (default docker driver + containerd image store); only main writes the cache.
       - name: Build CLI integration image
         uses: docker/build-push-action@c3c9e263c25d99ce0380d002d59b67737d91b0dc # v7.4.0
         env:
@@ -175,7 +175,7 @@ jobs:
           tags: cli-args-test:ci
           load: true
           cache-from: type=gha,scope=cli-args-test
-          cache-to: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/ci/docker-layer-cache') && 'type=gha,scope=cli-args-test,mode=max' || '' }}
+          cache-to: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'type=gha,scope=cli-args-test,mode=max' || '' }}
       - name: Verify Docker transport and Compose grammar
         env:
           CLI_ARGS_TEST_IMAGE: cli-args-test:ci
