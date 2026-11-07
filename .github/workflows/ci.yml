@@ -175,7 +175,7 @@ jobs:
           tags: cli-args-test:ci
           load: true
           cache-from: type=gha,scope=cli-args-test
-          cache-to: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' && 'type=gha,scope=cli-args-test,mode=max' || '' }}
+          cache-to: ${{ github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/ci/docker-layer-cache') && 'type=gha,scope=cli-args-test,mode=max' || '' }}
       - name: Verify Docker transport and Compose grammar
         env:
           CLI_ARGS_TEST_IMAGE: cli-args-test:ci
