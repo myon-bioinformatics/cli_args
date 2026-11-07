@@ -1,7 +1,4 @@
-import json
-import os
-import shutil
-import uuid
+import json, os, shutil, uuid
 
 import pytest
 

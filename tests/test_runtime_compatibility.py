@@ -1,7 +1,5 @@
 """Offline behavior checks without pytest or site-packages."""
-import argparse
-import json
-import unittest
+import argparse, json, unittest
 import cli_args
 
 class RuntimeCompatibilityTests(unittest.TestCase):

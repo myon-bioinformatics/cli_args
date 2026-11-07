@@ -1,6 +1,4 @@
-import json
-import os
-import shutil
+import json, os, shutil
 
 import pytest
 

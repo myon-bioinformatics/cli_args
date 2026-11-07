@@ -1,15 +1,5 @@
-import base64
-import contextlib
-import dataclasses
-import io
-import json
-import os
-import re
-import subprocess
-import sys
-from dataclasses import asdict, fields
-from pathlib import Path
-from typing import Any
+import base64, contextlib, dataclasses, io, json, os, re, subprocess, sys
+from dataclasses import asdict, fields; from pathlib import Path; from typing import Any
 
 import pytest
 

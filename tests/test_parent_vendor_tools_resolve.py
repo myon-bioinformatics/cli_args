@@ -1,7 +1,5 @@
 """Live resolution of parent vendor tooling (opt-in via network marker)."""
-import importlib.util
-import os
-import re
+import importlib.util, os, re
 from pathlib import Path
 
 import pytest

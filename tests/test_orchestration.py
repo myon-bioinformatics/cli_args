@@ -1,8 +1,5 @@
-import json
-import os
-from pathlib import Path
-import sys
-from tempfile import TemporaryDirectory
+import json, os, sys
+from pathlib import Path; from tempfile import TemporaryDirectory
 
 from cli_args import Command, run_command
 

@@ -1,12 +1,5 @@
-from contextlib import contextmanager
-from functools import partial
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
-from pathlib import Path
-import json
-import os
-import shutil
-from threading import Thread
-from urllib.parse import quote
+import json, os, shutil
+from contextlib import contextmanager; from functools import partial; from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer; from pathlib import Path; from threading import Thread; from urllib.parse import quote
 
 import pytest
 
