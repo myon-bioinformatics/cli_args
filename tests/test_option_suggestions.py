@@ -1,9 +1,6 @@
 """Executable contract for opt-in stdlib difflib hints (Python 3.11+)."""
-import argparse
-import json
+import argparse, json, subprocess, sys
 from pathlib import Path
-import subprocess
-import sys
 
 import pytest
 

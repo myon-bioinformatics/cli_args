@@ -1,7 +1,5 @@
-import importlib.util
-from datetime import datetime
-from pathlib import Path
-import subprocess
+import importlib.util, subprocess
+from datetime import datetime; from pathlib import Path
 
 import pytest
 

@@ -1,13 +1,4 @@
-import json
-import os
-import selectors
-import shutil
-import signal
-import sys
-import tempfile
-import unittest
-import subprocess
-import textwrap
+import json, os, selectors, shutil, signal, subprocess, sys, tempfile, textwrap, unittest
 from pathlib import Path
 
 import pytest

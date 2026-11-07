@@ -1,10 +1,5 @@
-import json
-import os
+import json, os, socket, subprocess, sys, time
 from pathlib import Path
-import socket
-import subprocess
-import sys
-import time
 
 from cli_args import Command, run_command
 
