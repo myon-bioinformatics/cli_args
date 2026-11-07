@@ -201,3 +201,49 @@ Official references:
 
 Do not add every useful flag as a cli_args method. Keep argv construction generic and keep
 new tests tied to a real ambiguity, environment dependency or observable result.
+
+## Org-wide option vocabulary (measured 2026-11-07)
+
+`python -S scripts/survey_cli_surfaces.py CLONES_DIR` re-measures this section from one checkout per
+repository (`--json --output survey.json` keeps the per-file facts). The 2026-11-07 run covered the 24
+public, non-archived `myon-bioinformatics` repositories: **469 Python files build an `ArgumentParser`**.
+
+| Measured fact | Files | Repos | Without `help=` | What cli_args offers |
+|---|---:|---:|---:|---|
+| `--out` | 85 | 13 | 69 | `add_output_arguments` keeps `--output`; `--out` is the older spelling |
+| `--output` | 81 | 13 | 64 | `add_output_arguments(parser)` |
+| boolean `--json` | 52 | 14 | 13 | `add_output_arguments(parser, json_flag=True)` adds `--json` as sugar for `--format json` |
+| `--root` | 44 | 11 | 36 | caller-defined; pass a `Path` type and a help line |
+| `--timeout` | 23 | 12 | 12 | `add_execution_arguments` (`positive_seconds`) |
+| `--format` | 16 | 9 | 12 | 11 different `choices` sets; only this repo uses exactly `text|json` |
+| `--dry-run` | 6 | 4 | 1 | `add_execution_arguments` |
+
+Exit codes written as literals: `0` in 310 files, `1` in 122, `2` in 127, `3` in 11, then a long tail
+(`4`, `5`, `6`, `8`, `9`, sysexits `65`/`66`). Three CLIs reached the same shape independently after
+[cli_args #29](https://github.com/myon-bioinformatics/cli_args/issues/29) and each wrote its own copy:
+
+| Repository | Pre-parse `--format json` scan | Usage error as JSON | `3` means | Record keys |
+|---|---|---|---|---|
+| `yourself/scripts/yourself_cli.py` | yes (abbreviations too) | yes, on stdout | partial observations | `schema_version`, `error{code,message,exit_code}` |
+| `xprobe/scripts/xprobe_cli.py` | — | yes, on stderr | truncated JUnit report | `ok`, `code`, `error`, `exit`, `message` |
+| `nvd_nist_known_vulns/nvd_nist_known_vulns.py` | yes | yes, on stderr | — | `category`, `error`, `exit_code`, `message`, `schema`, `status` |
+| `gh_identity pr-checks` | — | — | pending / timeout | — |
+
+The shared contract now lives here so the next CLI does not write a fourth variant:
+
+- `EXIT_OK` / `EXIT_FAILURE` / `EXIT_USAGE` / `EXIT_PARTIAL` = `0` / `1` / `2` / `3`. A child's status is data
+  inside the output. `3` is never a usage error, so it cannot collide with argparse.
+- `requested_format(argv)` reads the last `--format X` / `--format=X` before `--` from raw argv, because
+  usage errors happen before argparse returns a namespace.
+- `write_error(message, error="usage", exit_code=EXIT_USAGE, format=...)` writes one stderr line in text
+  mode or one JSON object `{"ok": false, "error": CODE, "message": ..., "exit_code": N}` (sorted keys,
+  extra keys allowed, never shadowing those four) and returns the exit code, so `return write_error(...)`
+  is the whole failure path. stdout stays reserved for the successful document.
+- `make_parser(json_errors=True)` routes argparse's own `error()` through `write_error` when the argv
+  asked for `--format json`; text mode keeps the usual usage line. Combine with `suggest_unknown=True`.
+
+`scripts/survey_cli_surfaces.py` itself uses all of them (Host-real: `tests/test_survey_cli_surfaces.py`).
+
+What the survey does not claim: it reads `add_argument` calls statically, so options built in loops or
+from tables are not counted, exit codes are only the integer literals, and CI commands are matched by
+regex on workflow lines. Treat the numbers as a floor, not a census.
