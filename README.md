@@ -27,7 +27,9 @@ args = parse_args([
 
 For finer control, call `add_argument()` or `add_mutually_exclusive_group()` directly on the parser returned by `make_parser()`. `Argument.names`, an explicit `parse_args(..., argv=...)`, and `require_when(..., required=...)` all take an ordered, finite sequence; a single string or implicit expansion of a set/dict/generator is rejected. `require_when(parser, args, when=..., required=["output"])` rejects, via `parser.error()`, any listed item whose value is `None` when the condition holds. `False` and `0` count as given values.
 
-`add_output_arguments(parser)` adds `--format text/json` and `--output`; `add_execution_arguments(parser)` adds `--dry-run` / `--timeout` / `--cwd`. Pick only the sets you need and avoid name clashes on the caller side.
+`add_output_arguments(parser)` adds `--format text/json` and `--output`; `add_output_arguments(parser, json_flag=True)` also accepts `--json` as sugar for `--format json`, for the many existing callers that grew a boolean flag first. `add_execution_arguments(parser)` adds `--dry-run` / `--timeout` / `--cwd`. Pick only the sets you need and avoid name clashes on the caller side.
+
+Agent-facing failure contract, shared across the repositories (measured in [docs/cli-argument-patterns.md](docs/cli-argument-patterns.md)): `EXIT_OK` / `EXIT_FAILURE` / `EXIT_USAGE` / `EXIT_PARTIAL` are `0` / `1` / `2` / `3`; `requested_format(argv)` reads the last `--format` before `--` from raw argv; `write_error(message, error="usage", exit_code=EXIT_USAGE, format="json")` writes one JSON record (`ok`, `error`, `message`, `exit_code`) or one `error: code: message` line to stderr and returns the exit code; `make_parser(json_errors=True)` makes argparse usage errors use that record when `--format json` was requested. `scripts/survey_cli_surfaces.py CLONES_DIR` re-measures the org-wide option vocabulary with exactly these helpers.
 
 ## Building commands
 
