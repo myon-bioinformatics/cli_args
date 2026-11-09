@@ -65,14 +65,7 @@ jobs:
         run: |
           set -euo pipefail
           python -S .vendor-sync-tools/vendor_sync.py check --manifest vendor.lock.json
-          python -S - <<'PY'
-          import json
-          from pathlib import Path
-          for entry in json.loads(Path("vendor.lock.json").read_text(encoding="utf-8"))["files"]:
-              Path(entry["destination"]).unlink()
-          PY
-          python -S .vendor-sync-tools/vendor_sync.py materialize --manifest vendor.lock.json
-          python -S .vendor-sync-tools/vendor_sync.py check --manifest vendor.lock.json
+          python -S .vendor-sync-tools/vendor_sync.py recreate --manifest vendor.lock.json
 
   test:
     if: needs.changes.outputs.product_changed == 'true'
