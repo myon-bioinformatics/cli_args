@@ -240,7 +240,7 @@ The shared contract now lives here so the next CLI does not write a fourth varia
   extra keys allowed, never shadowing those four) and returns the exit code, so `return write_error(...)`
   is the whole failure path. stdout stays reserved for the successful document.
 - `make_parser(json_errors=True)` routes argparse's own `error()` through `write_error` when the argv
-  asked for `--format json`; text mode keeps the usual usage line. Combine with `suggest_unknown=True`.
+  asked for `--format json`; text mode keeps the usual usage line. Typo hints (`suggest_unknown`, on by default) ride along in the JSON `message`.
 
 `scripts/survey_cli_surfaces.py` itself uses all of them (Host-real: `tests/test_survey_cli_surfaces.py`).
 

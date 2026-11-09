@@ -1,4 +1,4 @@
-"""Executable contract for opt-in stdlib difflib hints (Python 3.11+)."""
+"""Executable contract for stdlib difflib typo hints (Python 3.11+, on by default)."""
 import argparse, json, subprocess, sys
 from pathlib import Path
 
@@ -29,13 +29,22 @@ def test_equals_value_and_parse_args_helper(capsys):
     assert parse_args(specs, ["--format", "json"], suggest_unknown=True).format == "json"
 
 
-def test_no_hint_by_default_or_for_unrelated_input(capsys):
+def test_hint_is_on_by_default_and_opt_out_restores_plain_argparse(capsys):
     parser = make_parser()
     parser.add_argument("--output")
     with pytest.raises(SystemExit):
         parser.parse_args(["--outpt", "file"])
+    assert "did you mean '--output'?" in capsys.readouterr().err
+    parser = make_parser(suggest_unknown=False)
+    parser.add_argument("--output")
+    parser.add_argument("--mode", choices=["fast", "slow"])
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--outpt", "file"])
     assert "did you mean" not in capsys.readouterr().err
-    parser = make_parser(suggest_unknown=True)
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--mode", "fats"])  # 3.15's argparse would suggest; opt-out keeps it quiet
+    assert "maybe you meant" not in capsys.readouterr().err
+    parser = make_parser()
     parser.add_argument("--output")
     with pytest.raises(SystemExit):
         parser.parse_args(["--utterly-unrelated-option"])
@@ -274,3 +283,93 @@ def test_json_errors_cover_unknown_arguments_and_combine_with_hints(capsys):
     assert record['message'] == "unrecognized arguments: --outpt=x (did you mean '--output'?)"
     with pytest.raises(TypeError, match='json_errors must be bool'):
         make_parser(json_errors=1)
+
+
+# ── choices and subcommands: Python 3.15's wording on every supported Python ──
+
+def _subcommand_parser(**kwargs):
+    parser = make_parser(prog="tool", **kwargs)
+    parser.add_argument("--format", choices=["json", "text"])
+    sub = parser.add_subparsers(dest="cmd", required=True)
+    install = sub.add_parser("install")
+    install.add_argument("--flavor", choices=["gitea", "forgejo"])
+    sub.add_parser("status")
+    return parser
+
+
+# The "(choose from ...)" tail stays native: 3.12 lists choices unquoted, other versions quote them.
+@pytest.mark.parametrize("argv, expected", [
+    (["--format", "jsno", "status"], "invalid choice: 'jsno', maybe you meant 'json'? (choose from "),
+    (["instal"], "invalid choice: 'instal', maybe you meant 'install'? (choose from "),
+    (["install", "--flavor", "gitae"], "invalid choice: 'gitae', maybe you meant 'gitea'? (choose from "),
+])
+def test_choice_and_subcommand_hints_match_stdlib_wording(argv, expected, capsys):
+    with pytest.raises(SystemExit) as exc:
+        _subcommand_parser().parse_args(argv)
+    assert exc.value.code == 2
+    assert expected in capsys.readouterr().err
+
+
+def test_choice_hint_without_close_match_or_non_string_choices_keeps_native_message(capsys):
+    parser = make_parser()
+    parser.add_argument("--level", type=int, choices=[1, 2, 3])
+    parser.add_argument("--mode", choices=["fast", "slow"])
+    for argv in (["--level", "4"], ["--mode", "zzzz"]):
+        with pytest.raises(SystemExit):
+            parser.parse_args(argv)
+        err = capsys.readouterr().err
+        assert "invalid choice" in err and "maybe you meant" not in err
+
+
+def test_explicit_suggest_on_error_false_keeps_option_hints_only(capsys):
+    parser = _subcommand_parser(suggest_on_error=False)
+    with pytest.raises(SystemExit):
+        parser.parse_args(["instal"])
+    assert "maybe you meant" not in capsys.readouterr().err
+    with pytest.raises(SystemExit):
+        parser.parse_args(["install", "--flavr", "gitea"])
+    assert "did you mean '--flavor'?" in capsys.readouterr().err
+
+
+def test_unknown_option_inside_subcommand_is_suggested(capsys):
+    with pytest.raises(SystemExit):
+        _subcommand_parser().parse_args(["install", "--flavr", "gitea"])
+    assert "unrecognized arguments: --flavr gitea (did you mean '--flavor'?)" in capsys.readouterr().err
+
+
+def test_typo_option_is_pointed_at_when_another_error_surfaces_first(capsys):
+    # argparse reads 'json' as the subcommand before it reports --fomrat as unknown.
+    with pytest.raises(SystemExit):
+        _subcommand_parser().parse_args(["--fomrat", "json"])
+    err = capsys.readouterr().err
+    assert "invalid choice: 'json'" in err and "(did you mean '--format'?)" in err
+
+
+def test_hints_never_change_what_parses():
+    ns = _subcommand_parser().parse_args(["--format", "json", "install", "--flavor", "gitea"])
+    assert (ns.format, ns.cmd, ns.flavor) == ("json", "install", "gitea")
+
+
+def test_json_errors_carry_the_hint(capsys):
+    parser = make_parser(prog="tool", json_errors=True)
+    parser.add_argument("--format", choices=["json", "text"])
+    parser.add_argument("--mode", choices=["fast", "slow"])
+    with pytest.raises(SystemExit) as exc:
+        parser.parse_args(["--format", "json", "--mode", "fats"])
+    assert exc.value.code == 2
+    record = json.loads(capsys.readouterr().err)
+    assert record["error"] == "usage" and "maybe you meant 'fast'?" in record["message"]
+
+
+def test_real_subprocess_on_this_python(tmp_path):
+    script = tmp_path / "tool.py"
+    script.write_text(
+        "import sys\n"
+        f"sys.path.insert(0, {str(ROOT)!r})\n"
+        "from cli_args import make_parser\n"
+        "p = make_parser(prog='tool'); s = p.add_subparsers(dest='cmd', required=True)\n"
+        "s.add_parser('install'); p.parse_args()\n"
+    )
+    run = subprocess.run([sys.executable, "-S", str(script), "instal"], capture_output=True, text=True, timeout=15)
+    assert run.returncode == 2
+    assert "maybe you meant 'install'?" in run.stderr
