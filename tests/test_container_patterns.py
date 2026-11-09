@@ -1,8 +1,5 @@
+import hashlib, json, os, shutil
 from pathlib import Path
-import hashlib
-import json
-import os
-import shutil
 
 import pytest
 

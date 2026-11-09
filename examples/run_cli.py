@@ -7,9 +7,8 @@ exit 127: executable was not found.
 exit 1: another launch or output failure.
 any other status is the child exit code.
 """
-import argparse
+import argparse, sys
 from pathlib import Path
-import sys
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from cli_args import (Command, add_execution_arguments, add_output_arguments,

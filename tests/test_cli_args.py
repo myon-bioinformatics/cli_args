@@ -1,9 +1,5 @@
-import argparse
-import io
-import json
+import argparse, io, json, subprocess, sys
 from pathlib import Path
-import subprocess
-import sys
 
 import pytest
 

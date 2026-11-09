@@ -5,17 +5,8 @@ It is a test-harness tool, not part of the stdlib-only runtime artifact.
 """
 from __future__ import annotations
 
-from contextlib import closing
-from datetime import datetime, timezone
-import json
-import logging
-import os
-import platform
-from pathlib import Path
-import subprocess
-import sys
-import time
-import xml.etree.ElementTree as ET
+import json, logging, os, platform, subprocess, sys, time, xml.etree.ElementTree as ET
+from contextlib import closing; from datetime import datetime, timezone; from pathlib import Path
 
 
 ROOT = Path(__file__).resolve().parents[2]

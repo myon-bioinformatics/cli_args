@@ -1,13 +1,5 @@
-from datetime import datetime
-import logging
-import time
-from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
-from html.parser import HTMLParser
-from io import StringIO
-from pathlib import Path
-from threading import Thread
-from urllib.error import HTTPError
-from urllib.request import urlopen
+import logging, time
+from datetime import datetime; from html.parser import HTMLParser; from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer; from io import StringIO; from pathlib import Path; from threading import Thread; from urllib.error import HTTPError; from urllib.request import urlopen
 
 
 class _QuietHandler(SimpleHTTPRequestHandler):

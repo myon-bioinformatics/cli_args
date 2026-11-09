@@ -5,23 +5,8 @@ External tools keep their own option semantics; pass their argv unchanged.
 """
 from __future__ import annotations
 
-import argparse
-import base64
-from difflib import get_close_matches
-from collections import deque
-from collections.abc import Sequence as SequenceABC
-from dataclasses import asdict, dataclass, field
-import json
-import math
-import os
-import re
-import shutil
-from pathlib import Path
-import subprocess
-import sys
-import tempfile
-from threading import Event, Lock, Thread
-from typing import Any, Iterable, Mapping, Sequence, TextIO
+import argparse, base64, json, math, os, re, shutil, subprocess, sys, tempfile
+from collections import deque; from collections.abc import Sequence as SequenceABC; from dataclasses import asdict, dataclass, field; from difflib import get_close_matches; from pathlib import Path; from threading import Event, Lock, Thread; from typing import Any, Iterable, Mapping, Sequence, TextIO
 
 
 __version__ = "0.0.0"

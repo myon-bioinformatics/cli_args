@@ -1,17 +1,5 @@
-from collections import Counter, deque
-from configparser import ConfigParser
-from contextlib import ExitStack, redirect_stdout
-import csv
-from functools import lru_cache, partial
-import hashlib
-from io import StringIO
-from itertools import chain, islice
-from pathlib import Path
-from pprint import pformat
-import shlex
-from tempfile import TemporaryDirectory
-import textwrap
-from urllib.parse import quote, unquote
+import csv, hashlib, shlex, textwrap
+from collections import Counter, deque; from configparser import ConfigParser; from contextlib import ExitStack, redirect_stdout; from functools import lru_cache, partial; from io import StringIO; from itertools import chain, islice; from pathlib import Path; from pprint import pformat; from tempfile import TemporaryDirectory; from urllib.parse import quote, unquote
 
 
 def test_print_sep_end_and_file():
