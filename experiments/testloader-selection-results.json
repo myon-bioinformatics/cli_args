@@ -1,0 +1,834 @@
+{
+  "python": "3.12.3",
+  "platform": "Linux-6.18.57-x86_64-with-glibc2.39",
+  "revision": "79ad65a7988d2889fe0baf0c7280e05328982b9d",
+  "samples": {
+    "all": {
+      "discover": {
+        "raw": [
+          {
+            "load_ms": 1.036889,
+            "total_ms": 4.583152
+          },
+          {
+            "load_ms": 0.619902,
+            "total_ms": 1.112817
+          },
+          {
+            "load_ms": 0.445382,
+            "total_ms": 1.104059
+          },
+          {
+            "load_ms": 1.283875,
+            "total_ms": 2.413348
+          },
+          {
+            "load_ms": 0.364661,
+            "total_ms": 1.018468
+          },
+          {
+            "load_ms": 0.365007,
+            "total_ms": 1.461572
+          },
+          {
+            "load_ms": 0.34553,
+            "total_ms": 0.707427
+          },
+          {
+            "load_ms": 0.310445,
+            "total_ms": 0.641234
+          },
+          {
+            "load_ms": 0.305377,
+            "total_ms": 1.745192
+          },
+          {
+            "load_ms": 0.445877,
+            "total_ms": 0.789183
+          },
+          {
+            "load_ms": 0.292882,
+            "total_ms": 0.621584
+          },
+          {
+            "load_ms": 0.357754,
+            "total_ms": 0.655545
+          },
+          {
+            "load_ms": 0.283727,
+            "total_ms": 0.687229
+          },
+          {
+            "load_ms": 0.535,
+            "total_ms": 1.523137
+          },
+          {
+            "load_ms": 3.083451,
+            "total_ms": 3.724175
+          },
+          {
+            "load_ms": 0.367847,
+            "total_ms": 3.584639
+          },
+          {
+            "load_ms": 0.564778,
+            "total_ms": 1.142994
+          },
+          {
+            "load_ms": 5.491707,
+            "total_ms": 6.62287
+          },
+          {
+            "load_ms": 68.605803,
+            "total_ms": 71.314579
+          },
+          {
+            "load_ms": 2.007235,
+            "total_ms": 2.553947
+          },
+          {
+            "load_ms": 2.706016,
+            "total_ms": 3.23412
+          }
+        ],
+        "median_load_ms": 0.445877,
+        "median_total_ms": 1.461572
+      },
+      "names": {
+        "raw": [
+          {
+            "load_ms": 0.238629,
+            "total_ms": 1.285027
+          },
+          {
+            "load_ms": 0.072734,
+            "total_ms": 0.417039
+          },
+          {
+            "load_ms": 0.060747,
+            "total_ms": 0.536607
+          },
+          {
+            "load_ms": 0.313003,
+            "total_ms": 0.822784
+          },
+          {
+            "load_ms": 0.0649,
+            "total_ms": 0.605787
+          },
+          {
+            "load_ms": 0.142398,
+            "total_ms": 0.610217
+          },
+          {
+            "load_ms": 0.061991,
+            "total_ms": 0.835486
+          },
+          {
+            "load_ms": 0.15149,
+            "total_ms": 0.47306
+          },
+          {
+            "load_ms": 0.063947,
+            "total_ms": 0.610141
+          },
+          {
+            "load_ms": 0.063021,
+            "total_ms": 0.376755
+          },
+          {
+            "load_ms": 0.056469,
+            "total_ms": 0.332987
+          },
+          {
+            "load_ms": 0.054284,
+            "total_ms": 0.321769
+          },
+          {
+            "load_ms": 0.08708,
+            "total_ms": 0.869299
+          },
+          {
+            "load_ms": 0.104787,
+            "total_ms": 0.751106
+          },
+          {
+            "load_ms": 1.792479,
+            "total_ms": 4.568439
+          },
+          {
+            "load_ms": 1.289705,
+            "total_ms": 2.816666
+          },
+          {
+            "load_ms": 0.069912,
+            "total_ms": 0.463778
+          },
+          {
+            "load_ms": 0.062192,
+            "total_ms": 0.556982
+          },
+          {
+            "load_ms": 0.480354,
+            "total_ms": 2.15288
+          },
+          {
+            "load_ms": 0.078442,
+            "total_ms": 0.448298
+          },
+          {
+            "load_ms": 0.341171,
+            "total_ms": 1.090673
+          }
+        ],
+        "median_load_ms": 0.078442,
+        "median_total_ms": 0.610141
+      }
+    },
+    "single": {
+      "discover": {
+        "raw": [
+          {
+            "load_ms": 0.706935,
+            "total_ms": 2.135988
+          },
+          {
+            "load_ms": 0.44576,
+            "total_ms": 0.687118
+          },
+          {
+            "load_ms": 0.43231,
+            "total_ms": 0.752283
+          },
+          {
+            "load_ms": 0.467564,
+            "total_ms": 0.689741
+          },
+          {
+            "load_ms": 0.715167,
+            "total_ms": 1.337466
+          },
+          {
+            "load_ms": 0.697525,
+            "total_ms": 1.365187
+          },
+          {
+            "load_ms": 2.062587,
+            "total_ms": 2.328921
+          },
+          {
+            "load_ms": 0.475097,
+            "total_ms": 1.298893
+          },
+          {
+            "load_ms": 0.527231,
+            "total_ms": 0.75074
+          },
+          {
+            "load_ms": 0.323725,
+            "total_ms": 0.670594
+          },
+          {
+            "load_ms": 0.313265,
+            "total_ms": 0.603353
+          },
+          {
+            "load_ms": 0.393219,
+            "total_ms": 0.65122
+          },
+          {
+            "load_ms": 0.307481,
+            "total_ms": 0.652857
+          },
+          {
+            "load_ms": 0.351007,
+            "total_ms": 0.561404
+          },
+          {
+            "load_ms": 0.417414,
+            "total_ms": 0.722449
+          },
+          {
+            "load_ms": 0.318469,
+            "total_ms": 0.517083
+          },
+          {
+            "load_ms": 0.315413,
+            "total_ms": 0.51218
+          },
+          {
+            "load_ms": 0.312489,
+            "total_ms": 0.493875
+          },
+          {
+            "load_ms": 0.329875,
+            "total_ms": 0.56541
+          },
+          {
+            "load_ms": 0.340474,
+            "total_ms": 0.556189
+          },
+          {
+            "load_ms": 0.282214,
+            "total_ms": 0.518664
+          }
+        ],
+        "median_load_ms": 0.393219,
+        "median_total_ms": 0.670594
+      },
+      "names": {
+        "raw": [
+          {
+            "load_ms": 1.013692,
+            "total_ms": 1.291266
+          },
+          {
+            "load_ms": 0.21258,
+            "total_ms": 0.450679
+          },
+          {
+            "load_ms": 0.562722,
+            "total_ms": 0.80002
+          },
+          {
+            "load_ms": 0.192775,
+            "total_ms": 0.387215
+          },
+          {
+            "load_ms": 0.235308,
+            "total_ms": 0.476918
+          },
+          {
+            "load_ms": 0.20634,
+            "total_ms": 0.908794
+          },
+          {
+            "load_ms": 0.292968,
+            "total_ms": 0.503179
+          },
+          {
+            "load_ms": 0.193351,
+            "total_ms": 1.047168
+          },
+          {
+            "load_ms": 0.23987,
+            "total_ms": 0.440981
+          },
+          {
+            "load_ms": 0.229945,
+            "total_ms": 0.434887
+          },
+          {
+            "load_ms": 0.236069,
+            "total_ms": 0.472152
+          },
+          {
+            "load_ms": 0.185829,
+            "total_ms": 0.464334
+          },
+          {
+            "load_ms": 0.264139,
+            "total_ms": 0.461301
+          },
+          {
+            "load_ms": 0.189799,
+            "total_ms": 0.515689
+          },
+          {
+            "load_ms": 0.307054,
+            "total_ms": 0.511778
+          },
+          {
+            "load_ms": 0.232624,
+            "total_ms": 0.607881
+          },
+          {
+            "load_ms": 0.2103,
+            "total_ms": 0.619576
+          },
+          {
+            "load_ms": 0.246631,
+            "total_ms": 0.450807
+          },
+          {
+            "load_ms": 0.546666,
+            "total_ms": 0.778553
+          },
+          {
+            "load_ms": 0.192786,
+            "total_ms": 0.79497
+          },
+          {
+            "load_ms": 0.219863,
+            "total_ms": 0.403299
+          }
+        ],
+        "median_load_ms": 0.232624,
+        "median_total_ms": 0.503179
+      }
+    },
+    "multiple": {
+      "discover": {
+        "raw": [
+          {
+            "load_ms": 10.335958,
+            "total_ms": 15.162733
+          },
+          {
+            "load_ms": 8.654715,
+            "total_ms": 9.147034
+          },
+          {
+            "load_ms": 0.431313,
+            "total_ms": 0.712535
+          },
+          {
+            "load_ms": 6.421869,
+            "total_ms": 6.817719
+          },
+          {
+            "load_ms": 0.369373,
+            "total_ms": 0.674565
+          },
+          {
+            "load_ms": 0.384875,
+            "total_ms": 0.691489
+          },
+          {
+            "load_ms": 0.3131,
+            "total_ms": 0.55019
+          },
+          {
+            "load_ms": 0.449241,
+            "total_ms": 0.753586
+          },
+          {
+            "load_ms": 2.780757,
+            "total_ms": 3.127853
+          },
+          {
+            "load_ms": 4.28336,
+            "total_ms": 11.205638
+          },
+          {
+            "load_ms": 0.388284,
+            "total_ms": 0.693861
+          },
+          {
+            "load_ms": 0.426293,
+            "total_ms": 11.819372
+          },
+          {
+            "load_ms": 0.523657,
+            "total_ms": 0.903194
+          },
+          {
+            "load_ms": 12.469165,
+            "total_ms": 12.925459
+          },
+          {
+            "load_ms": 0.360076,
+            "total_ms": 7.213849
+          },
+          {
+            "load_ms": 0.447265,
+            "total_ms": 7.70653
+          },
+          {
+            "load_ms": 0.4748,
+            "total_ms": 3.686578
+          },
+          {
+            "load_ms": 0.598244,
+            "total_ms": 1.009303
+          },
+          {
+            "load_ms": 0.327694,
+            "total_ms": 0.598083
+          },
+          {
+            "load_ms": 1084.241465,
+            "total_ms": 1090.508083
+          },
+          {
+            "load_ms": 0.855436,
+            "total_ms": 1.349909
+          }
+        ],
+        "median_load_ms": 0.4748,
+        "median_total_ms": 3.127853
+      },
+      "names": {
+        "raw": [
+          {
+            "load_ms": 4.1963,
+            "total_ms": 4.603571
+          },
+          {
+            "load_ms": 0.416387,
+            "total_ms": 3.132587
+          },
+          {
+            "load_ms": 8.63298,
+            "total_ms": 9.074449
+          },
+          {
+            "load_ms": 0.370179,
+            "total_ms": 0.63461
+          },
+          {
+            "load_ms": 0.452928,
+            "total_ms": 4.057838
+          },
+          {
+            "load_ms": 2.834966,
+            "total_ms": 3.18927
+          },
+          {
+            "load_ms": 14.379763,
+            "total_ms": 14.800201
+          },
+          {
+            "load_ms": 3.789089,
+            "total_ms": 4.183414
+          },
+          {
+            "load_ms": 0.461613,
+            "total_ms": 0.752197
+          },
+          {
+            "load_ms": 0.312272,
+            "total_ms": 0.548479
+          },
+          {
+            "load_ms": 6.493107,
+            "total_ms": 10.355651
+          },
+          {
+            "load_ms": 0.428943,
+            "total_ms": 0.75461
+          },
+          {
+            "load_ms": 6.676138,
+            "total_ms": 7.087581
+          },
+          {
+            "load_ms": 0.40237,
+            "total_ms": 0.685503
+          },
+          {
+            "load_ms": 0.530596,
+            "total_ms": 7.833548
+          },
+          {
+            "load_ms": 3.01688,
+            "total_ms": 3.406052
+          },
+          {
+            "load_ms": 0.496461,
+            "total_ms": 0.855721
+          },
+          {
+            "load_ms": 0.370547,
+            "total_ms": 10.033765
+          },
+          {
+            "load_ms": 89.051262,
+            "total_ms": 403.537996
+          },
+          {
+            "load_ms": 74.615877,
+            "total_ms": 78.790806
+          },
+          {
+            "load_ms": 1.650724,
+            "total_ms": 2.203064
+          }
+        ],
+        "median_load_ms": 1.650724,
+        "median_total_ms": 4.057838
+      }
+    },
+    "zero": {
+      "discover": {
+        "raw": [
+          {
+            "load_ms": 20.008644,
+            "total_ms": 20.040515
+          },
+          {
+            "load_ms": 10.224613,
+            "total_ms": 10.257224
+          },
+          {
+            "load_ms": 8.93313,
+            "total_ms": 8.962481
+          },
+          {
+            "load_ms": 0.639299,
+            "total_ms": 0.659599
+          },
+          {
+            "load_ms": 0.567117,
+            "total_ms": 0.607204
+          },
+          {
+            "load_ms": 0.480077,
+            "total_ms": 0.495695
+          },
+          {
+            "load_ms": 1.76732,
+            "total_ms": 1.78695
+          },
+          {
+            "load_ms": 16.075343,
+            "total_ms": 16.120638
+          },
+          {
+            "load_ms": 2.356856,
+            "total_ms": 2.38311
+          },
+          {
+            "load_ms": 1.367241,
+            "total_ms": 1.388734
+          },
+          {
+            "load_ms": 37.056224,
+            "total_ms": 37.086467
+          },
+          {
+            "load_ms": 6.24261,
+            "total_ms": 6.273625
+          },
+          {
+            "load_ms": 81.476554,
+            "total_ms": 81.519804
+          },
+          {
+            "load_ms": 7.947519,
+            "total_ms": 7.979304
+          },
+          {
+            "load_ms": 10.048711,
+            "total_ms": 10.083554
+          },
+          {
+            "load_ms": 5.752567,
+            "total_ms": 5.78676
+          },
+          {
+            "load_ms": 0.650178,
+            "total_ms": 0.671355
+          },
+          {
+            "load_ms": 0.546665,
+            "total_ms": 0.563999
+          },
+          {
+            "load_ms": 17.897878,
+            "total_ms": 17.933963
+          },
+          {
+            "load_ms": 7.973525,
+            "total_ms": 8.005071
+          },
+          {
+            "load_ms": 7.433869,
+            "total_ms": 7.49314
+          }
+        ],
+        "median_load_ms": 7.433869,
+        "median_total_ms": 7.49314
+      },
+      "names": {
+        "raw": [
+          {
+            "load_ms": 0.004696,
+            "total_ms": 0.008975
+          },
+          {
+            "load_ms": 0.001928,
+            "total_ms": 0.005338
+          },
+          {
+            "load_ms": 0.00554,
+            "total_ms": 0.010327
+          },
+          {
+            "load_ms": 0.002128,
+            "total_ms": 0.006134
+          },
+          {
+            "load_ms": 0.003865,
+            "total_ms": 0.007996
+          },
+          {
+            "load_ms": 0.001636,
+            "total_ms": 0.004854
+          },
+          {
+            "load_ms": 0.003749,
+            "total_ms": 0.008082
+          },
+          {
+            "load_ms": 0.001506,
+            "total_ms": 0.00423
+          },
+          {
+            "load_ms": 0.004815,
+            "total_ms": 0.008726
+          },
+          {
+            "load_ms": 0.001736,
+            "total_ms": 0.004472
+          },
+          {
+            "load_ms": 0.004308,
+            "total_ms": 0.008546
+          },
+          {
+            "load_ms": 0.001614,
+            "total_ms": 0.004508
+          },
+          {
+            "load_ms": 0.049539,
+            "total_ms": 0.054516
+          },
+          {
+            "load_ms": 0.001822,
+            "total_ms": 0.004631
+          },
+          {
+            "load_ms": 0.005018,
+            "total_ms": 0.009516
+          },
+          {
+            "load_ms": 0.002074,
+            "total_ms": 0.005861
+          },
+          {
+            "load_ms": 0.003578,
+            "total_ms": 0.007884
+          },
+          {
+            "load_ms": 0.001705,
+            "total_ms": 0.005084
+          },
+          {
+            "load_ms": 0.005737,
+            "total_ms": 0.010543
+          },
+          {
+            "load_ms": 0.00179,
+            "total_ms": 0.00499
+          },
+          {
+            "load_ms": 0.004549,
+            "total_ms": 0.008714
+          }
+        ],
+        "median_load_ms": 0.003578,
+        "median_total_ms": 0.007884
+      }
+    }
+  },
+  "cli": {
+    "all": {
+      "exit": 0,
+      "stdout": "",
+      "stderr": "test_finite_positive_validation (test_runtime_compatibility.RuntimeCompatibilityTests.test_finite_positive_validation) ... ok\ntest_json_rendering (test_runtime_compatibility.RuntimeCompatibilityTests.test_json_rendering) ... ok\ntest_parse_structured_arguments (test_runtime_compatibility.RuntimeCompatibilityTests.test_parse_structured_arguments) ... ok\n\n----------------------------------------------------------------------\nRan 3 tests in 0.023s\n\nOK\n",
+      "pytest": {
+        "ids": [
+          "test_runtime_compatibility.RuntimeCompatibilityTests.test_finite_positive_validation",
+          "test_runtime_compatibility.RuntimeCompatibilityTests.test_json_rendering",
+          "test_runtime_compatibility.RuntimeCompatibilityTests.test_parse_structured_arguments"
+        ],
+        "passed": [
+          "test_runtime_compatibility.RuntimeCompatibilityTests.test_finite_positive_validation",
+          "test_runtime_compatibility.RuntimeCompatibilityTests.test_finite_positive_validation",
+          "test_runtime_compatibility.RuntimeCompatibilityTests.test_finite_positive_validation",
+          "test_runtime_compatibility.RuntimeCompatibilityTests.test_finite_positive_validation",
+          "test_runtime_compatibility.RuntimeCompatibilityTests.test_finite_positive_validation",
+          "test_runtime_compatibility.RuntimeCompatibilityTests.test_finite_positive_validation",
+          "test_runtime_compatibility.RuntimeCompatibilityTests.test_json_rendering",
+          "test_runtime_compatibility.RuntimeCompatibilityTests.test_parse_structured_arguments"
+        ],
+        "failed": []
+      }
+    },
+    "single": {
+      "exit": 0,
+      "stdout": "",
+      "stderr": "test_parse_structured_arguments (test_runtime_compatibility.RuntimeCompatibilityTests.test_parse_structured_arguments) ... ok\n\n----------------------------------------------------------------------\nRan 1 test in 0.003s\n\nOK\n",
+      "pytest": {
+        "ids": [
+          "test_runtime_compatibility.RuntimeCompatibilityTests.test_parse_structured_arguments"
+        ],
+        "passed": [
+          "test_runtime_compatibility.RuntimeCompatibilityTests.test_parse_structured_arguments"
+        ],
+        "failed": []
+      }
+    },
+    "multiple": {
+      "exit": 0,
+      "stdout": "",
+      "stderr": "test_json_rendering (test_runtime_compatibility.RuntimeCompatibilityTests.test_json_rendering) ... ok\ntest_parse_structured_arguments (test_runtime_compatibility.RuntimeCompatibilityTests.test_parse_structured_arguments) ... ok\n\n----------------------------------------------------------------------\nRan 2 tests in 0.006s\n\nOK\n",
+      "pytest": {
+        "ids": [
+          "test_runtime_compatibility.RuntimeCompatibilityTests.test_json_rendering",
+          "test_runtime_compatibility.RuntimeCompatibilityTests.test_parse_structured_arguments"
+        ],
+        "passed": [
+          "test_runtime_compatibility.RuntimeCompatibilityTests.test_json_rendering",
+          "test_runtime_compatibility.RuntimeCompatibilityTests.test_parse_structured_arguments"
+        ],
+        "failed": []
+      }
+    },
+    "zero": {
+      "exit": 5,
+      "stdout": "",
+      "stderr": "\n----------------------------------------------------------------------\nRan 0 tests in 0.000s\n\nNO TESTS RAN\n",
+      "pytest": {
+        "ids": [],
+        "passed": [],
+        "failed": []
+      }
+    }
+  },
+  "selection_ids": {
+    "all": [
+      "test_runtime_compatibility.RuntimeCompatibilityTests.test_finite_positive_validation",
+      "test_runtime_compatibility.RuntimeCompatibilityTests.test_json_rendering",
+      "test_runtime_compatibility.RuntimeCompatibilityTests.test_parse_structured_arguments"
+    ],
+    "single": [
+      "test_runtime_compatibility.RuntimeCompatibilityTests.test_parse_structured_arguments"
+    ],
+    "multiple": [
+      "test_runtime_compatibility.RuntimeCompatibilityTests.test_json_rendering",
+      "test_runtime_compatibility.RuntimeCompatibilityTests.test_parse_structured_arguments"
+    ],
+    "zero": []
+  },
+  "invalid": {
+    "loader_errors": 1,
+    "run_errors": 1,
+    "unittest": {
+      "exit": 1,
+      "stdout": "",
+      "stderr": "E\n======================================================================\nERROR: test_no_such_method (unittest.loader._FailedTest.test_no_such_method)\n----------------------------------------------------------------------\nAttributeError: type object 'RuntimeCompatibilityTests' has no attribute 'test_no_such_method'\n\n----------------------------------------------------------------------\nRan 1 test in 0.006s\n\nFAILED (errors=1)\n"
+    },
+    "pytest": {
+      "exit": 4,
+      "stdout": "\nno tests ran in 0.28s\n",
+      "stderr": "ERROR: not found: /workspace/scratch/4cfa90064cb1/child/tests/test_runtime_compatibility.py::RuntimeCompatibilityTests::test_no_such_method\n(no match in any of [<UnitTestCase RuntimeCompatibilityTests>])\n\n"
+    }
+  },
+  "ids": [
+    "test_runtime_compatibility.RuntimeCompatibilityTests.test_finite_positive_validation",
+    "test_runtime_compatibility.RuntimeCompatibilityTests.test_json_rendering",
+    "test_runtime_compatibility.RuntimeCompatibilityTests.test_parse_structured_arguments"
+  ]
+}
