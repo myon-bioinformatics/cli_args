@@ -238,3 +238,39 @@ def test_sys_argv_and_argument_files_preserve_boundaries(monkeypatch, tmp_path, 
     with pytest.raises(SystemExit):
         parser.parse_args(['@' + str(argument_file)])
     assert 'did you mean' not in capsys.readouterr().err
+
+
+def test_json_errors_emit_one_record_only_when_json_was_requested(capsys):
+    parser = make_parser(json_errors=True, prog='tool')
+    parser.add_argument('--format', choices=('text', 'json'), default='text')
+    parser.add_argument('--count', type=int)
+    with pytest.raises(SystemExit) as exc:
+        parser.parse_args(['--format=json', '--count', 'x'])
+    captured = capsys.readouterr()
+    assert exc.value.code == 2
+    assert captured.out == ''
+    record = json.loads(captured.err)
+    assert record == {'ok': False, 'error': 'usage', 'exit_code': 2,
+                      'message': "argument --count: invalid int value: 'x'"}
+    # The last explicit --format wins; a format after -- belongs to the target.
+    with pytest.raises(SystemExit):
+        parser.parse_args(['--format', 'json', '--format', 'text', '--count', 'x'])
+    err = capsys.readouterr().err
+    assert err.startswith('usage: tool') and 'invalid int value' in err
+    with pytest.raises(SystemExit):
+        parser.parse_args(['--count', 'x', '--', '--format', 'json'])
+    assert capsys.readouterr().err.startswith('usage: tool')
+
+
+def test_json_errors_cover_unknown_arguments_and_combine_with_hints(capsys):
+    parser = make_parser(json_errors=True, suggest_unknown=True)
+    parser.add_argument('--format', choices=('text', 'json'))
+    parser.add_argument('--output')
+    with pytest.raises(SystemExit) as exc:
+        parser.parse_args(['--format=json', '--outpt=x'])
+    record = json.loads(capsys.readouterr().err)
+    assert exc.value.code == 2
+    assert record['error'] == 'usage'
+    assert record['message'] == "unrecognized arguments: --outpt=x (did you mean '--output'?)"
+    with pytest.raises(TypeError, match='json_errors must be bool'):
+        make_parser(json_errors=1)

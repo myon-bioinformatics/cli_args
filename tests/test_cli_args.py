@@ -3,9 +3,10 @@ from pathlib import Path
 
 import pytest
 
-from cli_args import (Argument, Command, CommandResult, add_execution_arguments,
-                      add_output_arguments, build_env, make_parser, parse_args, pytest_command,
-                      render_output, require_when, run_command, write_output)
+from cli_args import (EXIT_FAILURE, EXIT_OK, EXIT_PARTIAL, EXIT_USAGE, Argument, Command,
+                      CommandResult, add_execution_arguments, add_output_arguments, build_env,
+                      make_parser, parse_args, pytest_command, render_output, require_when,
+                      requested_format, run_command, write_error, write_output)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -74,6 +75,79 @@ def test_shared_options(tmp_path):
     args = parser.parse_args(["--format", "json", "--output", str(tmp_path / "a.json"),
                               "--cwd", str(tmp_path), "--timeout", "1.5", "--dry-run"])
     assert (args.format, args.cwd, args.timeout, args.dry_run) == ("json", tmp_path, 1.5, True)
+
+
+def test_json_flag_is_sugar_for_format_json():
+    parser = make_parser()
+    add_output_arguments(parser, json_flag=True)
+    assert parser.parse_args([]).format == "text"
+    assert parser.parse_args(["--json"]).format == "json"
+    assert parser.parse_args(["--json", "--format", "text"]).format == "text"
+    assert "--json" in parser.format_help() and "shorthand for --format json" in parser.format_help()
+    plain = make_parser()
+    add_output_arguments(plain)
+    with pytest.raises(SystemExit):
+        plain.parse_args(["--json"])
+    with pytest.raises(TypeError, match="json_flag must be bool"):
+        add_output_arguments(make_parser(), json_flag=1)
+
+
+def test_exit_vocabulary_is_fixed():
+    assert (EXIT_OK, EXIT_FAILURE, EXIT_USAGE, EXIT_PARTIAL) == (0, 1, 2, 3)
+
+
+@pytest.mark.parametrize("argv, expected", [
+    ([], "text"),
+    (["--format", "json"], "json"),
+    (["--format=json"], "json"),
+    (["--format", "json", "--format", "text"], "text"),
+    (["--format=json", "--format"], "text"),
+    (["--", "--format", "json"], "text"),
+    (["--format", "yaml"], "text"),
+    (["--format", "json", "--", "--format", "text"], "json"),
+])
+def test_requested_format_scans_raw_argv(argv, expected):
+    assert requested_format(argv) == expected
+    # A value outside ``choices`` falls back to ``default`` (argparse still rejects it later).
+    assert requested_format(argv, default="markdown", choices=("markdown", "json")) == (
+        "json" if expected == "json" else "markdown")
+
+
+def test_requested_format_defaults_to_sys_argv_and_rejects_scalars(monkeypatch):
+    monkeypatch.setattr(sys, "argv", ["tool", "--format=json"])
+    assert requested_format() == "json"
+    with pytest.raises(TypeError):
+        requested_format("--format json")
+
+
+def test_write_error_text_and_json_records():
+    text = io.StringIO()
+    assert write_error("bad value", stream=text) == EXIT_USAGE
+    assert text.getvalue() == "error: usage: bad value\n"
+    out = io.StringIO()
+    code = write_error("boom\nsecond line", error="io_error", exit_code=EXIT_FAILURE, format="json",
+                       stream=out, extra={"path": "日本語.txt", "error": "shadowed", "schema": 1})
+    assert code == EXIT_FAILURE
+    lines = out.getvalue().splitlines()
+    assert len(lines) == 1
+    assert json.loads(lines[0]) == {"error": "io_error", "exit_code": 1, "message": "boom second line",
+                                    "ok": False, "path": "日本語.txt", "schema": 1}
+    assert lines[0].startswith('{"error":')  # sorted keys: stable for log diffing
+    partial = io.StringIO()
+    assert write_error("3 of 5 observed", error="partial", exit_code=EXIT_PARTIAL, format="json",
+                       stream=partial) == EXIT_PARTIAL
+
+
+@pytest.mark.parametrize("kwargs, error", [
+    ({"format": "yaml"}, ValueError),
+    ({"exit_code": "2"}, TypeError),
+    ({"exit_code": True}, TypeError),
+    ({"error": "Usage Error"}, ValueError),
+    ({"error": ""}, ValueError),
+])
+def test_write_error_rejections(kwargs, error):
+    with pytest.raises(error):
+        write_error("x", stream=io.StringIO(), **kwargs)
 
 
 def test_command_order_and_values():

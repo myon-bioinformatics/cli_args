@@ -27,7 +27,9 @@ args = parse_args([
 
 For finer control, call `add_argument()` or `add_mutually_exclusive_group()` directly on the parser returned by `make_parser()`. `Argument.names`, an explicit `parse_args(..., argv=...)`, and `require_when(..., required=...)` all take an ordered, finite sequence; a single string or implicit expansion of a set/dict/generator is rejected. `require_when(parser, args, when=..., required=["output"])` rejects, via `parser.error()`, any listed item whose value is `None` when the condition holds. `False` and `0` count as given values.
 
-`add_output_arguments(parser)` adds `--format text/json` and `--output`; `add_execution_arguments(parser)` adds `--dry-run` / `--timeout` / `--cwd`. Pick only the sets you need and avoid name clashes on the caller side.
+`add_output_arguments(parser)` adds `--format text/json` and `--output`; `add_output_arguments(parser, json_flag=True)` also accepts `--json` as sugar for `--format json`, for the many existing callers that grew a boolean flag first. `add_execution_arguments(parser)` adds `--dry-run` / `--timeout` / `--cwd`. Pick only the sets you need and avoid name clashes on the caller side.
+
+Agent-facing failure contract, shared across the repositories (measured in [docs/cli-argument-patterns.md](docs/cli-argument-patterns.md)): `EXIT_OK` / `EXIT_FAILURE` / `EXIT_USAGE` / `EXIT_PARTIAL` are `0` / `1` / `2` / `3`; `requested_format(argv)` reads the last `--format` before `--` from raw argv; `write_error(message, error="usage", exit_code=EXIT_USAGE, format="json")` writes one JSON record (`ok`, `error`, `message`, `exit_code`) or one `error: code: message` line to stderr and returns the exit code; `make_parser(json_errors=True)` makes argparse usage errors use that record when `--format json` was requested. `scripts/survey_cli_surfaces.py CLONES_DIR` re-measures the org-wide option vocabulary with exactly these helpers.
 
 ## Building commands
 
@@ -128,7 +130,7 @@ result = run_command(git, stdin=b"-leading name.txt\0", timeout=10)
 
 `run_command()` handles only synchronous, finite input; file objects and iterators are not accepted as stdin. Streaming/bidirectional batch protocols and long-running resident processes are not supported. Dry-run validates type and UTF-8 encoding but never prints the input, so secrets are not leaked. The existing UTF-8 replacement policy for stdout/stderr and the exit/timeout contract are unchanged.
 
-Cross-repo examples: `flutter_navigation_basic`'s stdin JSON, `browser-test-kit`'s stdin-based child-process tests, and external CLI wrappers such as `gh_identity`. Argument parsing and domain-specific rules stay in each project. Git NUL pathspecs and finite `git cat-file --batch-command --buffer -Z` calls are **verified against real Git**. Interactive, long-running bidirectional sessions are not supported.
+Cross-repo examples: `flutter_navigation_basic`'s stdin JSON, `BrowserTestKit`'s stdin-based child-process tests, and external CLI wrappers such as `gh_identity`. Argument parsing and domain-specific rules stay in each project. Git NUL pathspecs and finite `git cat-file --batch-command --buffer -Z` calls are **verified against real Git**. Interactive, long-running bidirectional sessions are not supported.
 
 ## Output protection and byte limits
 
@@ -148,6 +150,8 @@ write_output({"ok": True}, format="json", output="result.json", overwrite=False)
 ## Handing long output to the reader (explicit omissions, pytest deciding lines)
 
 `trim_output(text, head=40, tail=40)` keeps the first `head` lines and the last `tail` lines, with a single `... N line(s) omitted ...` line in between. Output cut with plain `head`/`tail` looks complete even when lines are missing, so the omission is made explicit for the reader (human or agent). Output that fits is returned unchanged.
+
+`trim_output(text, bounded_memory=True)` is an opt-in (Python only) that retains just the head/tail line spans instead of splitting every line; the default behavior and speed are unchanged. The input string itself is still held, so this is not a streaming API. See [the measurement and limits](docs/trim-memory.md).
 
 `pytest_summary(output)` returns only the lines in captured pytest output that decide the result: the final `N failed, M passed in Xs` line (`summary`/`counts`), `-ra` `FAILED`/`ERROR` lines (`failed`/`errors`), pytest-cov's `TOTAL` line and the `Required test coverage` verdict (`coverage`), and `deciding_lines` with the first `E` line of each failure and any `INTERNALERROR` (60 lines by default; excess sets `truncated`).
 
@@ -258,7 +262,7 @@ Evidence levels are kept distinct.
 | Docker | Host-real → Container-real | Exact transport of `--`, empty strings, leading hyphens, spaces, and Unicode argv from the host's `cli_args.Command` into a locally built image |
 | Docker Compose | Host-real | Runs repeated `-f` + `config --services` referencing only the locally built image. No registry/network needed |
 | Node / npm | Host-real | Argv building, lookup, and version probe for `node_command` / `run_node` / `node_or_command` (Node 26+, explicit-choice failures, `.cmd` rejection) and real `.cjs` / `.mjs` runs (`--`, empty strings, leading hyphens, Unicode paths, timeout and exit code). CI has dedicated Node 26 and latest lanes on Ubuntu/Windows/macOS. Transport of `npm run ... -- <args>` is also measured with a temp package + local JS probe |
-| Playwright CLI shape | Construct-only | Records the direct Node CLI form actually used in the org as a past pattern, avoiding greedy `--project value` and verifying `--project=value` + `--grep` + spec order. Real browser/parser evidence lives in browser-test-kit |
+| Playwright CLI shape | Construct-only | Records the direct Node CLI form actually used in the org as a past pattern, avoiding greedy `--project value` and verifying `--project=value` + `--grep` + spec order. Real browser/parser evidence lives in BrowserTestKit |
 | gh | Host-real binary + Construct-only/stub | `gh --version` uses the real binary. Exact argv for API subcommands, repeated headers, `--jq`, `--paginate --slurp`, `--cache 1h`, and typed `-F` / raw `-f` fields recorded as past patterns. Live auth/network not measured |
 | Flutter / Dart | Construct-only | Representative argv for `flutter build web -t ... --dart-define=...` and `dart run ... --output ...` recorded as past patterns. Bootstrap/build is measured in the Flutter repo |
 | FFmpeg | Container-real | FFmpeg is installed explicitly in the test-only image and processes a tiny lavfi source with `-f lavfi -i ... -f null -`. Multiple options/values and the special `-` output are measured |

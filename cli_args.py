@@ -14,11 +14,23 @@ __version__ = "0.0.0"
 __all__ = [
     "Argument", "make_parser", "parse_args", "add_output_arguments",
     "add_execution_arguments", "add_node_arguments", "require_when",
-    "positive_seconds", "Command", "CommandResult", "run_command",
+    "positive_seconds", "requested_format", "write_error",
+    "EXIT_OK", "EXIT_FAILURE", "EXIT_USAGE", "EXIT_PARTIAL",
+    "Command", "CommandResult", "run_command",
     "render_output", "write_output", "pytest_command", "trim_output",
     "pytest_summary", "build_env", "NodeNotFoundError", "is_node_target",
     "resolve_node", "node_command", "run_node", "node_or_command",
 ]
+
+# Exit vocabulary shared by the agent-facing CLIs across the repositories
+# (xprobe, yourself, nvd_nist_known_vulns, gh_identity pr-checks, Err-o-RoadRunner).
+# A child's status is data inside the output, never this process exit.
+EXIT_OK = 0        # request handled
+EXIT_FAILURE = 1   # launch, I/O or runtime failure; nothing usable was produced
+EXIT_USAGE = 2     # usage error or rejected request (argparse's own code)
+EXIT_PARTIAL = 3   # a partial or pending result was still written (never usage)
+
+OUTPUT_FORMATS = ("text", "json")
 
 
 @dataclass(frozen=True)
@@ -35,22 +47,94 @@ class Argument:
         object.__setattr__(self, "names", names)
 
 
-class _SuggestingArgumentParser(argparse.ArgumentParser):
-    """Offer a closest *option* on unknown-argument errors, without accepting it."""
+def requested_format(argv: Sequence[str] | None = None, *, default: str = "text",
+                     choices: Sequence[str] = OUTPUT_FORMATS) -> str:
+    """Pre-parse scan for the last ``--format X`` / ``--format=X`` before ``--``.
+
+    Usage errors are raised before argparse has produced a namespace, so a CLI
+    that promises a JSON error record must learn the requested format from raw
+    argv. Only the exact ``--format`` spelling counts (parsers here reject
+    abbreviations). An unknown value falls back to ``default`` and is left for
+    argparse to reject.
+    """
+    tokens = list(sys.argv[1:] if argv is None else _tokens(argv))
+    value = None
+    index = 0
+    while index < len(tokens):
+        token = tokens[index]
+        if token == "--":
+            break
+        if token.startswith("--format="):
+            value = token[len("--format="):]
+        elif token == "--format":
+            value = tokens[index + 1] if index + 1 < len(tokens) else None
+            index += 1
+        index += 1
+    return value if value in tuple(choices) else default
+
+
+def write_error(message: str, *, error: str = "usage", exit_code: int = EXIT_USAGE,
+                format: str = "text", stream: TextIO | None = None,
+                extra: Mapping[str, Any] | None = None) -> int:
+    """Write one error record (text line or JSON object) and return ``exit_code``.
+
+    text: ``error: <error>: <message>`` on one line. json: one JSON object on one
+    line with ``ok`` false, ``error`` (a short machine code such as ``usage``,
+    ``io_error``, ``timeout``), ``message`` and ``exit_code``; ``extra`` keys are
+    added but can never shadow those four. Both go to stderr by default so stdout
+    stays reserved for the successful document.
+    """
+    if format not in OUTPUT_FORMATS:
+        raise ValueError("format must be text or json")
+    if type(exit_code) is not int:
+        raise TypeError("exit_code must be int")
+    if not re.fullmatch(r"[a-z][a-z0-9_]*", error):
+        raise ValueError("error must be a short snake_case code")
+    out = sys.stderr if stream is None else stream
+    text = str(message).replace("\r", " ").replace("\n", " ").strip()
+    if format == "json":
+        record: dict[str, Any] = dict(extra or {})
+        record.update({"ok": False, "error": error, "message": text, "exit_code": exit_code})
+        out.write(json.dumps(record, ensure_ascii=False, allow_nan=False, sort_keys=True) + "\n")
+    else:
+        out.write(f"error: {error}: {text}\n")
+    return exit_code
+
+
+class _AgentArgumentParser(argparse.ArgumentParser):
+    """Opt-in agent ergonomics: unknown-option hints and JSON usage errors.
+
+    ``suggest_unknown`` offers the closest *option* on unknown-argument errors,
+    without accepting it. ``json_errors`` turns every ``error()`` into one
+    ``write_error`` JSON record when the argv asked for ``--format json``; text
+    mode keeps argparse's usage line and message. The exit code stays 2.
+    """
+
+    suggest_unknown = False
+    json_errors = False
+    _cli_argv: list[str] | None = None
 
     def parse_args(self, args=None, namespace=None):
         # Keep structured argv: error text loses token and -- boundaries.
         tokens = list(sys.argv[1:] if args is None else args)
+        self._cli_argv = tokens
         parsed, extras = self.parse_known_args(tokens, namespace)
         if extras:
             message = argparse._("unrecognized arguments: %s") % " ".join(extras)
-            message += self._unknown_option_hint(tokens, extras)
+            if self.suggest_unknown:
+                message += self._unknown_option_hint(tokens, extras)
             # argparse honors exit_on_error here starting with 3.12.5.
             # Earlier releases always call error(), even when it is false.
             if sys.version_info >= (3, 12, 5) and not self.exit_on_error:
                 raise argparse.ArgumentError(None, message)
             self.error(message)
         return parsed
+
+    def error(self, message):
+        if self.json_errors and requested_format(self._cli_argv) == "json":
+            write_error(message, error="usage", exit_code=EXIT_USAGE, format="json")
+            self.exit(EXIT_USAGE)
+        super().error(message)
 
     def _unknown_option_hint(self, tokens, extras):
         boundary = tokens.index("--") if "--" in tokens else len(tokens)
@@ -77,13 +161,19 @@ class _SuggestingArgumentParser(argparse.ArgumentParser):
 
 
 def make_parser(arguments: Iterable[Argument] = (), *, suggest_unknown: bool = False,
-                **kwargs: Any) -> argparse.ArgumentParser:
-    """Create a parser; optional unknown-option hints never change parsing."""
+                json_errors: bool = False, **kwargs: Any) -> argparse.ArgumentParser:
+    """Create a parser; optional hints and JSON usage errors never change parsing."""
     if type(suggest_unknown) is not bool:
         raise TypeError("suggest_unknown must be bool")
+    if type(json_errors) is not bool:
+        raise TypeError("json_errors must be bool")
     kwargs.setdefault("allow_abbrev", False)
-    parser_class = _SuggestingArgumentParser if suggest_unknown else argparse.ArgumentParser
-    parser = parser_class(**kwargs)
+    if suggest_unknown or json_errors:
+        parser: argparse.ArgumentParser = _AgentArgumentParser(**kwargs)
+        parser.suggest_unknown = suggest_unknown  # type: ignore[attr-defined]
+        parser.json_errors = json_errors  # type: ignore[attr-defined]
+    else:
+        parser = argparse.ArgumentParser(**kwargs)
     for argument in arguments:
         parser.add_argument(*argument.names, **argument.kwargs)
     return parser
@@ -105,13 +195,24 @@ def positive_seconds(value: str) -> float:
     return number
 
 
-def add_output_arguments(parser: argparse.ArgumentParser) -> None:
+def add_output_arguments(parser: argparse.ArgumentParser, *, json_flag: bool = False) -> None:
+    """Add ``--format text|json`` and ``--output``; ``json_flag`` adds ``--json`` as sugar.
+
+    Most CLIs across the repositories grew a boolean ``--json`` before ``--format``
+    existed. With ``json_flag=True`` both spellings set the same ``format``
+    destination, so a caller can migrate without breaking existing invocations.
+    """
+    if type(json_flag) is not bool:
+        raise TypeError("json_flag must be bool")
     parser.add_argument(
         "--format",
-        choices=("text", "json"),
+        choices=OUTPUT_FORMATS,
         default="text",
         help="text renders a human document; json writes one JSON document (default: text)",
     )
+    if json_flag:
+        parser.add_argument("--json", action="store_const", const="json", dest="format",
+                            help="shorthand for --format json")
     parser.add_argument("--output", type=Path, help="UTF-8 output file; default: stdout")
 
 
@@ -907,7 +1008,7 @@ def _cli_run() -> int:
         )
     except OSError as exc:
         print(str(exc), file=sys.stderr)
-        return 1
+        return EXIT_FAILURE
     body = json.dumps(
         _command_result_cli_json(result, stdout_raw, stderr_raw),
         ensure_ascii=False,
@@ -915,20 +1016,20 @@ def _cli_run() -> int:
         indent=2,
     ) + "\n"
     _emit_cli_stdout(body, request["response_max_bytes"])
-    return 0
+    return EXIT_OK
 
 
 def _cli_render(format: str, response_max_bytes: int | None) -> int:
     payload = _load_stdin_json()
     if format == "json":
         _emit_cli_json_stdout(payload, response_max_bytes)
-        return 0
+        return EXIT_OK
     try:
         rendered = render_output(payload, format=format)
     except ValueError as exc:
         raise _CliRequestError(str(exc)) from exc
     _emit_cli_stdout(rendered, response_max_bytes)
-    return 0
+    return EXIT_OK
 
 
 def _main(argv: Sequence[str] | None = None) -> int:
@@ -974,24 +1075,24 @@ def _main(argv: Sequence[str] | None = None) -> int:
         args = parser.parse_args(None if argv is None else list(argv))
     except argparse.ArgumentError as exc:
         print(str(exc), file=sys.stderr)
-        return 2
+        return EXIT_USAGE
     if args.command is None:
         parser.print_usage(sys.stderr)
         print("cli_args.py: error: command required (run or render)", file=sys.stderr)
-        return 2
+        return EXIT_USAGE
     try:
         if args.command == "run":
             return _cli_run()
         return _cli_render(args.format, args.response_max_bytes)
     except _CliRequestError as exc:
         print(str(exc), file=sys.stderr)
-        return 2
+        return EXIT_USAGE
     except _CliResponseTooLargeError as exc:
         print(str(exc), file=sys.stderr)
-        return 1
+        return EXIT_FAILURE
     except Exception as exc:
         print(str(exc) or exc.__class__.__name__, file=sys.stderr)
-        return 1
+        return EXIT_FAILURE
 
 
 if __name__ == "__main__":
