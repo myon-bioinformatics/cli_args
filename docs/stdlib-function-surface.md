@@ -96,32 +96,43 @@ display = join(["git", "status", "--short"])
 
 Conversely, `shlex.split` is for deliberately parsing shell-like text. Do not use it to split an argv token that is already structured.
 
-## Implementation use: typo-aware one-liner options (opt-in)
+## Implementation use: typo-aware one-liner options (on by default)
 
 The same `difflib` that can display a test diff can also improve a **runtime CLI**.
-`cli_args.make_parser(suggest_unknown=True)` uses `get_close_matches` for
-mistyped long options, without changing the parser's semantics or accepting an
-approximate match. By default, `suggest_unknown=False` preserves argparse's
-original diagnostics.
+`cli_args.make_parser()` points at the closest match for three kinds of typo,
+without changing the parser's semantics or accepting an approximate match:
+
+| typo | hint (exit stays 2) |
+|---|---|
+| long option, also inside a subcommand | `unrecognized arguments: --max-outpt-bytes=12 (did you mean '--max-output-bytes'?)` |
+| choice value | `argument --format: invalid choice: 'jsno', maybe you meant 'json'? (choose from ...)` |
+| subcommand name | `argument cmd: invalid choice: 'instal', maybe you meant 'install'? (choose from ...)` |
+
+Choice and subcommand hints use Python 3.15's own argparse wording (`suggest_on_error`,
+default `True` since 3.15) and are backported to 3.11-3.13; the `(choose from ...)` tail
+stays whatever the running Python prints. When a typo'd option surfaces as another error
+first (its value read as a subcommand, say), that error also carries the option hint.
 
 ```python
 from cli_args import make_parser
 
-parser = make_parser(suggest_unknown=True)
+parser = make_parser()
 parser.add_argument("--max-output-bytes", type=int)
 parser.parse_args(["--max-outpt-bytes=12"])
 # exit 2: unrecognized arguments: --max-outpt-bytes=12
 #          (did you mean '--max-output-bytes'?)
 ```
 
-`python -S examples/run_cli.py` enables this hint for its wrapper options.
+`make_parser(suggest_unknown=False)` restores plain argparse diagnostics (also silencing
+3.15's built-in choice hints); `suggest_on_error=False` turns off only the choice and
+subcommand hints.
 Only whole *unknown long-option tokens* before the first `--` are candidates;
 positional data, hidden options and child-command argv after the mandatory
 `--` boundary are not guessed or rewritten. Hints use structured argv and the
 actual unrecognized tokens, never reparse diagnostic text. The ASCII option-name filter is intentionally conservative.
 Options expanded from argument files are not guessed. `parse_known_args`
 retains its ordinary behavior. Python 3.11+ and `python -S` are supported.
-Tests exercise both the opt-in parser and a real Python subprocess one-liner.
+Tests exercise the default parser, the opt-out, every supported Python and a real subprocess one-liner.
 
 Try it:
 

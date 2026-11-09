@@ -25,6 +25,8 @@ args = parse_args([
 ], ["--mode", "read", "--no-enabled", "a.html", "b.html"])
 ```
 
+🤔 Typos get a hint by default (exit stays 2, parsing never changes): `--fomrat` → `did you mean '--format'?`, `jsno` → `maybe you meant 'json'?`, `instal` → `maybe you meant 'install'?` — on every Python 3.11+, with 3.15's own argparse wording. `make_parser(suggest_unknown=False)` turns it off ([details](docs/stdlib-function-surface.md#implementation-use-typo-aware-one-liner-options-on-by-default)).
+
 For finer control, call `add_argument()` or `add_mutually_exclusive_group()` directly on the parser returned by `make_parser()`. `Argument.names`, an explicit `parse_args(..., argv=...)`, and `require_when(..., required=...)` all take an ordered, finite sequence; a single string or implicit expansion of a set/dict/generator is rejected. `require_when(parser, args, when=..., required=["output"])` rejects, via `parser.error()`, any listed item whose value is `None` when the condition holds. `False` and `0` count as given values.
 
 `add_output_arguments(parser)` adds `--format text/json` and `--output`; `add_output_arguments(parser, json_flag=True)` also accepts `--json` as sugar for `--format json`, for the many existing callers that grew a boolean flag first. `add_execution_arguments(parser)` adds `--dry-run` / `--timeout` / `--cwd`. Pick only the sets you need and avoid name clashes on the caller side.
