@@ -330,3 +330,24 @@ raw JUnit reports from both operating systems are required by the identity colle
 See [standard-library discovery commands](docs/unittest-discovery.md) for
 validated `python -S -m unittest discover` recipes, filename/name filtering,
 and the boundary with the full pytest suite.
+
+
+## uv: install the single-file command
+
+Runtime dependencies remain empty. From this repository root:
+
+```sh
+uv tool install .
+cli_args --help
+```
+
+Or use it once without registering a persistent command:
+
+```sh
+uvx --from 'git+https://github.com/myon-bioinformatics/cli_args.git@main' cli_args --help
+```
+
+For Python imports in another project, use `uv add /absolute/path/to/cli_args` and
+`uv run python -c 'import cli_args'`. `uv tool install` uses a separate environment.
+Use a reviewed full commit SHA instead of `main` when reproducibility is required.
+Only `cli_args.py` is installed; development dependency groups are not runtime requirements.
