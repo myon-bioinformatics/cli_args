@@ -1,5 +1,7 @@
 # cli_args
 
+📘 [利用ガイド / Usage guide](https://myon-bioinformatics.github.io/cli_args/) (GitHub Pages)
+
 <p align="center">
   <img src="docs/brand/icon.png" alt="cli_args icon" width="160" />
 </p>
