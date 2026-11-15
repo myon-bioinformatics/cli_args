@@ -1,3 +1,6 @@
+"""Docker integration lane on the host: exact argv transport into the locally built test image, Compose grammar and the
+local-only / networkless / read-only run policy. Skips unless ``docker`` and ``CLI_ARGS_TEST_IMAGE`` are both present.
+"""
 import json, os, shutil, uuid
 
 import pytest
@@ -5,11 +8,17 @@ import pytest
 from cli_args import Command, run_command
 
 
-def test_docker_transports_exact_argv():
+def docker_image():
+    """``(docker, image)`` for the configured integration image, or skip."""
     docker = shutil.which("docker")
     image = os.environ.get("CLI_ARGS_TEST_IMAGE")
     if docker is None or not image:
         pytest.skip("Docker integration image is not configured")
+    return docker, image
+
+
+def test_docker_transports_exact_argv():
+    docker, image = docker_image()
 
     values = ["", "-leading", "space value", "日本語"]
     transported = ["--", *values]
@@ -61,11 +70,9 @@ def test_docker_transports_exact_argv():
     finally:
         run_command(Command((docker,)).positional("rm", "-f", name), timeout=30)
 
+
 def test_docker_compose_real_repeated_files_with_local_image(tmp_path):
-    docker = shutil.which("docker")
-    image = os.environ.get("CLI_ARGS_TEST_IMAGE")
-    if docker is None or not image:
-        pytest.skip("Docker integration image is not configured")
+    docker, image = docker_image()
 
     version = run_command(Command((docker, "compose", "version")), timeout=30)
     assert version.returncode == 0, version.stderr
@@ -88,3 +95,25 @@ def test_docker_compose_real_repeated_files_with_local_image(tmp_path):
     )
     assert configured.returncode == 0, configured.stderr
     assert configured.stdout.splitlines() == ["probe"]
+
+
+def test_docker_local_only_networkless_read_only_policy():
+    docker, image = docker_image()
+
+    script = (
+        "from pathlib import Path; import json; "
+        "Path('/tmp/probe').write_text('ok'); "
+        "print(json.dumps({'tmp':Path('/tmp/probe').read_text()}))"
+    )
+    command = (
+        Command((docker,))
+        .positional("run", "--rm")
+        .option("--pull", "never", attached=True)
+        .option("--network", "none", attached=True)
+        .flag("--read-only")
+        .option("--tmpfs", "/tmp:rw,noexec,nosuid,size=16m")
+        .positional(image, "python", "-S", "-c", script)
+    )
+    result = run_command(command, timeout=30)
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout) == {"tmp": "ok"}

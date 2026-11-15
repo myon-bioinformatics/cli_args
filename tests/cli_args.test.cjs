@@ -7,7 +7,7 @@ const path = require("node:path");
 const {spawnSync} = require("node:child_process");
 const {test} = require("node:test");
 
-const ROOT = path.join(__dirname, "..", "..");
+const ROOT = path.join(__dirname, "..");
 const PYTHON = process.env.PYTHON || "python3";
 
 function normalizeNewlines(text) {

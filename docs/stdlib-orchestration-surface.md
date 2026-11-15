@@ -133,7 +133,7 @@ Those should be added only when a real consumer needs a contract stronger than o
 
 ## Measured behavior
 
-`tests/test_orchestration.py` verifies:
+`tests/test_stdlib_surfaces.py` (staged execution) verifies:
 
 - ordered steps stop after the first non-zero result;
 - later side effects are absent after failure;

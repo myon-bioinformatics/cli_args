@@ -83,7 +83,7 @@ def test_pytest_jobs_run_through_uv_and_node_tests_stay():
     text = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
     assert "python -m pytest" not in text
     assert text.count("uv run --locked pytest") >= 6
-    assert "node --test tests/node/cli_args.test.cjs" in text
+    assert "node --test tests/cli_args.test.cjs" in text
     dockerfile = (ROOT / "tests/docker/Dockerfile").read_text(encoding="utf-8")
     assert 'CMD ["uv", "run", "--locked", "pytest"' in dockerfile
     assert "python -m pytest" not in dockerfile

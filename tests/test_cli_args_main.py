@@ -1,4 +1,4 @@
-import base64, contextlib, dataclasses, io, json, os, re, subprocess, sys
+import base64, contextlib, io, json, os, re, subprocess, sys
 from dataclasses import asdict, fields; from pathlib import Path; from typing import Any
 
 import pytest
@@ -212,7 +212,7 @@ def test_render_nan_json_exits_two():
 
 
 def test_read_stdin_text_rejects_oversized_input():
-    payload = b"x" * (cli_args._CLI_STDIN_MAX_BYTES + 1)
+    payload = b"x" * (cli_args.CLI_STDIN_MAX_BYTES + 1)
     sys.stdin = io.TextIOWrapper(io.BytesIO(payload), encoding="utf-8")
     try:
         with pytest.raises(cli_args._CliRequestError, match="stdin exceeds size limit"):

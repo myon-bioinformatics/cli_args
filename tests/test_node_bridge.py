@@ -1,4 +1,4 @@
-import json, os, selectors, shutil, signal, subprocess, sys, tempfile, textwrap, unittest
+import json, os, shutil, subprocess, sys, tempfile, textwrap, unittest
 from pathlib import Path
 
 import pytest
@@ -6,6 +6,7 @@ import pytest
 import cli_args
 from cli_args import (NodeNotFoundError, add_node_arguments, build_env, is_node_target,
                       make_parser, node_command, node_or_command, resolve_node, run_node)
+from vendor import fleet_check as fleet
 
 
 def reset_node_probe_cache():
@@ -50,15 +51,7 @@ def install_probe_stub(monkeypatch):
     return register
 
 
-ECHO_CJS = textwrap.dedent(
-    """\
-    const payload = { argv: process.argv.slice(2), exitCode: Number(process.env.EXIT_CODE || 0) };
-    console.log(JSON.stringify(payload));
-    process.exit(payload.exitCode);
-    """
-)
-
-ECHO_MJS = textwrap.dedent(
+ECHO_JS = textwrap.dedent(  # same body as .cjs and .mjs
     """\
     const payload = { argv: process.argv.slice(2), exitCode: Number(process.env.EXIT_CODE || 0) };
     console.log(JSON.stringify(payload));
@@ -70,8 +63,8 @@ ECHO_MJS = textwrap.dedent(
 def write_echo_scripts(tmp_path: Path) -> tuple[Path, Path]:
     cjs = tmp_path / "echo_argv.cjs"
     mjs = tmp_path / "echo_argv.mjs"
-    cjs.write_text(ECHO_CJS, encoding="utf-8")
-    mjs.write_text(ECHO_MJS, encoding="utf-8")
+    cjs.write_text(ECHO_JS, encoding="utf-8")
+    mjs.write_text(ECHO_JS, encoding="utf-8")
     return cjs, mjs
 
 
@@ -191,7 +184,7 @@ def test_node_not_found_is_file_not_found():
 def test_run_node_real_cjs_and_mjs(tmp_path):
     cjs, mjs = write_echo_scripts(tmp_path)
     spaced = tmp_path / "space 日本語.cjs"
-    spaced.write_text(ECHO_CJS, encoding="utf-8")
+    spaced.write_text(ECHO_JS, encoding="utf-8")
     for target, values in (
         (cjs, ["--", "-opt", "", "日本 語"]),
         (mjs, ["--attached", "-x"]),
@@ -217,8 +210,6 @@ def test_run_node_exit_code_and_timeout(tmp_path):
 
 
 def shutil_which_node() -> str:
-    import shutil
-
     candidates: list[str] = []
     nvm_root = Path.home() / ".nvm/versions/node"
     if nvm_root.is_dir():
@@ -318,62 +309,12 @@ class LauncherRegressionTests(unittest.TestCase):
         self.env["CLI_ARGS_PYTHON"] = sys.executable
         self.env.pop("PY_LAUNCH_ERROR_FORMAT", None)
 
-    @unittest.skipIf(os.name == "nt", "POSIX signal forwarding contract")
-    def test_entry_forwards_repeated_signals_text(self):
-        self._check_repeated_signals(json_errors=False)
-
-    @unittest.skipIf(os.name == "nt", "POSIX signal forwarding contract")
-    def test_entry_forwards_repeated_signals_json(self):
-        self._check_repeated_signals(json_errors=True)
-
-    def _check_repeated_signals(self, *, json_errors):
-        # Wait for each acknowledgement before sending the next signal, so
-        # repeated SIGINT cannot coalesce and no timing sleeps are needed.
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            (root / "vendor").mkdir()
-            shutil.copyfile(self.root / "vendor/py_launch.cjs", root / "vendor/py_launch.cjs")
-            shutil.copyfile(self.root / f"{self.tool}.cjs", root / f"{self.tool}.cjs")
-            (root / f"{self.tool}.py").write_text(
-                "import signal, time\n"
-                "signal.signal(signal.SIGINT, lambda *_: print('ACK', flush=True))\n"
-                "print('READY', flush=True)\n"
-                "while True: time.sleep(60)\n",
-                encoding="utf-8",
-            )
-            env = dict(self.env, PY_LAUNCH_ERROR_FORMAT="json" if json_errors else "")
-            child = subprocess.Popen(
-                [self.node, str(root / f"{self.tool}.cjs")], env=env,
-                stdin=subprocess.DEVNULL, stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE, start_new_session=True,
-            )
-            try:
-                with selectors.DefaultSelector() as selector:
-                    selector.register(child.stdout, selectors.EVENT_READ)
-                    for expected, next_signal in [
-                        (b"READY\n", signal.SIGINT),
-                        (b"ACK\n", signal.SIGINT),
-                        (b"ACK\n", signal.SIGTERM),
-                    ]:
-                        self.assertTrue(selector.select(timeout=10), "child did not acknowledge forwarded signal")
-                        self.assertEqual(child.stdout.readline(), expected)
-                        child.send_signal(next_signal)
-                stdout, stderr = child.communicate(timeout=10)
-                self.assertEqual(child.returncode, 2)
-                self.assertEqual(stdout, b"")
-                if json_errors:
-                    error = json.loads(stderr)
-                    self.assertEqual(error["code"], "ESIGNAL")
-                    self.assertEqual(error["exit_code"], 2)
-                    self.assertIn("SIGTERM", error["message"])
-                else:
-                    self.assertIn(b"terminated by signal SIGTERM", stderr)
-            finally:
-                try:
-                    os.killpg(child.pid, signal.SIGKILL)
-                except ProcessLookupError:
-                    pass
-                child.communicate(timeout=10)
+    def test_vendored_launcher_keeps_its_contract(self):
+        # Exit 2 on a missing interpreter, -S during discovery, resolvePython noSite/isolated, argv/stdin/exit
+        # passthrough and (POSIX) repeated signal forwarding: the parent's shared check, not a local copy.
+        if fleet.node() is None:
+            self.skipTest("Node 26+ is required for launcher regressions (set NODE)")
+        fleet.launcher_contract(self.root, "CLI_ARGS_PYTHON")
 
     def test_entry_no_site_also_protects_interpreter_probe(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -388,24 +329,3 @@ class LauncherRegressionTests(unittest.TestCase):
             )
             self.assertEqual(result.returncode, 0, result.stderr)
             self.assertFalse(marker.exists(), "noSite must cover interpreter discovery too")
-
-    def test_discovery_honors_no_site_and_isolated_independently(self):
-        with tempfile.TemporaryDirectory() as tmp:
-            root = Path(tmp)
-            marker = root / "site-hook-ran"
-            (root / "sitecustomize.py").write_text(
-                f"from pathlib import Path\nPath({str(marker)!r}).touch()\n", encoding="utf-8",
-            )
-            launcher = json.dumps(str(self.root / "vendor/py_launch.cjs"))
-            for no_site, isolated in [(False, False), (True, False), (False, True), (True, True)]:
-                with self.subTest(no_site=no_site, isolated=isolated):
-                    marker.unlink(missing_ok=True)
-                    options = json.dumps({"python": sys.executable, "noSite": no_site, "isolated": isolated})
-                    # Resolution alone must suppress the hook; testing only the
-                    # final Python child would miss the vulnerable version probe.
-                    result = subprocess.run(
-                        [self.node, "-e", f"require({launcher}).resolvePython({options});"],
-                        env=dict(self.env, PYTHONPATH=str(root)), capture_output=True, timeout=30,
-                    )
-                    self.assertEqual(result.returncode, 0, result.stderr)
-                    self.assertEqual(marker.exists(), not (no_site or isolated))
