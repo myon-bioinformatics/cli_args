@@ -5,7 +5,7 @@ from vendor import fleet_check as fleet
 
 ROOT = fleet.repo_root(__file__)
 PARENT_WORKFLOW_PIN = "9e3da7ae1846e9604ebc24bb5178f7de094a4e77"
-ACCEPTED = {"vendor/fleet_check.py": "45ed741f7e1f60179934cee6fa1e16a887f97cb0"}
+ACCEPTED = {"vendor/fleet_check.py": "6c29503cf17eda856766ddfdf4d66a5b0965a8b1"}
 SETUP_UV = "astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2"
 JOBS = {
     "ci.yml": {
