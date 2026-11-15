@@ -117,7 +117,7 @@ Otherwise, do not manufacture protocol layers before the simpler surface fails a
 
 ## Evidence in PR #1
 
-`tests/test_observation_surface.py` verifies with only the standard library:
+`tests/test_stdlib_surfaces.py` (observation path) verifies with only the standard library:
 
 - a static HTML document can be fetched in full over real localhost HTTP;
 - the same document can be minimally inspected with `html.parser`;

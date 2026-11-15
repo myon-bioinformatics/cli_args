@@ -901,7 +901,6 @@ CLI_RENDER_RESPONSE_MAX_BYTES = 96 * 1024 * 1024
 CLI_HOST_RESPONSE_MARGIN_BYTES = 512
 """Node ``maxBuffer`` is ``response_max_bytes +`` this margin (never rely on a JSON size formula)."""
 
-_CLI_STDIN_MAX_BYTES = CLI_STDIN_MAX_BYTES
 _RUN_REQUEST_KEYS = frozenset({
     "argv", "timeout", "cwd", "env", "input", "max_output", "dry_run", "response_max_bytes",
 })
@@ -971,8 +970,8 @@ def _reject_json_non_finite(constant: str) -> Any:
 
 
 def _read_stdin_text() -> str:
-    raw = sys.stdin.buffer.read(_CLI_STDIN_MAX_BYTES + 1)
-    if len(raw) > _CLI_STDIN_MAX_BYTES:
+    raw = sys.stdin.buffer.read(CLI_STDIN_MAX_BYTES + 1)
+    if len(raw) > CLI_STDIN_MAX_BYTES:
         raise _CliRequestError("stdin exceeds size limit")
     try:
         return raw.decode("utf-8")

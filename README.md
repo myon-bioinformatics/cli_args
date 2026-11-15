@@ -284,10 +284,10 @@ Ubuntu CI saves, as separate artifacts, the JUnit for Python 3.11 / 3.12 / 3.14 
 uv sync --locked
 python -S -c "import cli_args"
 uv run --locked pytest -q -ra --tb=short --junitxml=test-results/pytest-local.xml
-node --test tests/node/cli_args.test.cjs
+node --test tests/cli_args.test.cjs
 ```
 
-`pyproject.toml` and `uv.lock` are the source of truth for the development/test environment. `tests/requirements.txt` is kept for compatibility. The module running under `python -S` and external tools being present are separate conditions. pytest runs with `uv run --locked pytest`. The development dependency pytest has a lower bound only (`pytest>=8`), with no exact pin or upper bound. `node --test` remains the Node test runner.
+`pyproject.toml` and `uv.lock` are the source of truth for the development/test environment. The module running under `python -S` and external tools being present are separate conditions. pytest runs with `uv run --locked pytest`. The development dependency pytest has a lower bound only (`pytest>=8`), with no exact pin or upper bound. `node --test` remains the Node test runner.
 
 This records "which usage patterns were reproduced and verified", not speed benchmarks. Failure cases are added to regression tests, and shared features grow from real examples. HTML fetching and structure extraction belong in separate tools, which are expected to use this file's argument, execution, and output features.
 
@@ -303,7 +303,7 @@ package. Development/test environments use Python 3.11+ and a committed uv lock:
 ```sh
 uv sync --locked --python 3.11
 uv run --locked pytest
-node --test tests/node/cli_args.test.cjs
+node --test tests/cli_args.test.cjs
 python -S -m unittest discover -s tests -p test_runtime_compatibility.py -v
 ```
 

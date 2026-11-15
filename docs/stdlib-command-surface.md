@@ -65,7 +65,7 @@ For longer or reused logic, import the module normally instead of growing an opa
 
 ## Evidence in PR #1
 
-The test suite executes a representative subset rather than only documenting it:
+`tests/test_stdlib_surfaces.py` (python -m commands) executes a representative subset rather than only documenting it:
 
 - `json.tool` performs a real JSON transformation.
 - `zipfile` creates and lists a real archive.

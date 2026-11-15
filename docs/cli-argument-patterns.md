@@ -179,13 +179,13 @@ only the missing catalog entries and focused execution evidence are added. There
 | Docker `inspect --format ...`, Compose repeated `-f FILE` | Select image metadata / layer configuration using existing Docker grammar. | Existing Docker-real tests assert WorkingDir/environment and real Compose config services. No general template engine is added here. |
 | FFmpeg `-nostdin -hide_banner -loglevel error -f lavfi ... -f null -` | Run a bounded synthetic media probe without interactive stdin or an output artifact. | Existing container-real lavfi-to-null test; this is not evidence for all media formats/codecs. |
 | `cli_args` `node_command` / `run_node` / `node_or_command` | Keep Node entrypoints on the same argv contract as other CLIs: `[node, *node_flags, script, *args]`, opt-in auto-wrap for `.js`/`.cjs`/`.mjs`, explicit `node`/`CLI_ARGS_NODE` fail closed, Node 26+ probe. | Host-real: [tests/test_node_bridge.py](../tests/test_node_bridge.py) on Node 26 and latest in CI (Ubuntu/Windows/macOS); Windows/macOS portability lane. |
-| `cli_args.cjs` `runCommand` / `render` | Inverse bridge: Node hosts call vendored `py_launch.cjs` → `cli_args.py run`/`render` (JSON stdin), no nested Node, `CLI_ARGS_PYTHON` explicit env, exit 2 → `CliArgsRequestError`. | [tests/node/cli_args.test.cjs](../tests/node/cli_args.test.cjs) in CI `node-runtime`; Python contract in [tests/test_cli_args_main.py](../tests/test_cli_args_main.py). |
+| `cli_args.cjs` `runCommand` / `render` | Inverse bridge: Node hosts call vendored `py_launch.cjs` → `cli_args.py run`/`render` (JSON stdin), no nested Node, `CLI_ARGS_PYTHON` explicit env, exit 2 → `CliArgsRequestError`. | [tests/cli_args.test.cjs](../tests/cli_args.test.cjs) in CI `node-runtime`; Python contract in [tests/test_cli_args_main.py](../tests/test_cli_args_main.py). |
 
 Origins:
-- [Current PR host tests](../tests/test_commands.py) already use curl configuration/proxy controls and pytest addopts override.
+- [Host tests](../tests/test_host_commands.py) already use curl configuration/proxy controls and pytest addopts override.
 - [Shared inspector baseline](https://github.com/myon-bioinformatics/myon-bioinformatics/blob/a06641024a782af31bdb51fb0e0d6a1ea21995d0/git_inspector.py)
   uses the tracked + untracked + ignored boundary and optional-lock suppression.
-- [New focused tests](../tests/test_host_cli_patterns.py) exercise the config/ignore/locking behaviors above.
+- [The same file's exit-code and config section](../tests/test_host_commands.py) exercises the config/ignore/locking behaviors above.
 - [Docker evidence](../tests/test_docker_integration.py) and [FFmpeg evidence](../tests/test_container_commands.py)
   already existed; the catalog now makes those options discoverable.
 

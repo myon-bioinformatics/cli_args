@@ -148,7 +148,7 @@ in production code while pytest checks its behavioral boundaries.
 
 ## Representative measured behavior in PR #1
 
-`tests/test_stdlib_functions.py` keeps representative behaviors executable on the supported Python floor:
+`tests/test_stdlib_surfaces.py` (functions and types) keeps representative behaviors executable on the supported Python floor:
 
 - `print` separator/end/file behavior;
 - `pprint.pformat` indentation, width and insertion-order preservation;
