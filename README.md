@@ -287,7 +287,7 @@ uv run --locked pytest -q -ra --tb=short --junitxml=test-results/pytest-local.xm
 node --test tests/cli_args.test.cjs
 ```
 
-`pyproject.toml` and `uv.lock` are the source of truth for the development/test environment. `tests/requirements.txt` is kept for compatibility. The module running under `python -S` and external tools being present are separate conditions. pytest runs with `uv run --locked pytest`. The development dependency pytest has a lower bound only (`pytest>=8`), with no exact pin or upper bound. `node --test` remains the Node test runner.
+`pyproject.toml` and `uv.lock` are the source of truth for the development/test environment. The module running under `python -S` and external tools being present are separate conditions. pytest runs with `uv run --locked pytest`. The development dependency pytest has a lower bound only (`pytest>=8`), with no exact pin or upper bound. `node --test` remains the Node test runner.
 
 This records "which usage patterns were reproduced and verified", not speed benchmarks. Failure cases are added to regression tests, and shared features grow from real examples. HTML fetching and structure extraction belong in separate tools, which are expected to use this file's argument, execution, and output features.
 
