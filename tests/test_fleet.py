@@ -1,8 +1,11 @@
-"""Stdlib-only contracts for CI Python selection and preserved baselines."""
+"""Fleet contracts through the parent's shared checks (vendor/fleet_check.py): locks, pins, CI setup, benchmark."""
 import json, re, tomllib, unittest
-from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+from vendor import fleet_check as fleet
+
+ROOT = fleet.repo_root(__file__)
+PARENT_WORKFLOW_PIN = "9e3da7ae1846e9604ebc24bb5178f7de094a4e77"
+ACCEPTED = {"vendor/fleet_check.py": "45ed741f7e1f60179934cee6fa1e16a887f97cb0"}
 SETUP_UV = "astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2"
 JOBS = {
     "ci.yml": {
@@ -34,14 +37,68 @@ EXPECTED_REPORTS = [
 ]
 
 
+
 def job(workflow, name):
-    """Read the bounded job block in our two-space-indented workflows."""
-    text = (ROOT / ".github/workflows" / workflow).read_text(encoding="utf-8")
-    pattern = r"(?ms)^  " + re.escape(name) + r":\n(.*?)(?=^  [\w-]+:\n|\Z)"
-    match = re.search(pattern, text)
-    if match is None:
-        raise AssertionError(f"Missing job {workflow}: {name}")
-    return match.group(1)
+    return fleet.workflow_job(ROOT, name, workflow)
+
+
+def test_vendor_lock_matches_checked_in_bytes():
+    fleet.check_lock(ROOT, commits=ACCEPTED)
+
+
+def test_parent_workflow_references_use_reviewed_rollout_commit():
+    # Refs resolved at runtime (``${{ … }}``) are not pins and stay outside this contract.
+    pins = [ref for ref in fleet.parent_refs(ROOT) if "${{" not in (ref or "")]
+    assert set(pins) == {PARENT_WORKFLOW_PIN}, pins
+
+
+def test_vendor_locked_job_resolves_parent_main_at_runtime():
+    path = ROOT / ".github/workflows/ci.yml"
+    text = path.read_text(encoding="utf-8")
+    assert PARENT_WORKFLOW_PIN in text
+    assert "parent_vendor_tools_resolve.py" in text
+    assert "GITHUB_TOKEN" in text
+    assert "steps.parent-vendor-tools.outputs.sha" in text
+    script = (ROOT / "scripts/parent_vendor_tools_resolve.py").read_text(encoding="utf-8")
+    assert "api.github.com/repos/" in script
+    assert "ls-remote" in script and "--symref" in script
+    assert "638801160" in script
+    assert "shell=True" not in script
+
+
+def test_vendor_locked_job_runs_network_parent_vendor_resolve_regressions():
+    path = ROOT / ".github/workflows/ci.yml"
+    text = path.read_text(encoding="utf-8")
+    assert "Network parent vendor tools resolve regressions" in text
+    assert (
+        "uv run --locked pytest -q -m network tests/test_parent_vendor_tools_resolve.py"
+        in text
+    )
+    marker = "Network parent vendor tools resolve regressions"
+    block = text.split(marker, 1)[1].split("- name:", 1)[0]
+    assert "GITHUB_TOKEN: ${{ github.token }}" in block
+
+
+def test_pytest_jobs_run_through_uv_and_node_tests_stay():
+    text = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
+    assert "python -m pytest" not in text
+    assert text.count("uv run --locked pytest") >= 6
+    assert "node --test tests/node/cli_args.test.cjs" in text
+    dockerfile = (ROOT / "tests/docker/Dockerfile").read_text(encoding="utf-8")
+    assert 'CMD ["uv", "run", "--locked", "pytest"' in dockerfile
+    assert "python -m pytest" not in dockerfile
+
+
+class OptimizedBenchmarkTests(unittest.TestCase):
+    def test_wrong_trim_result_stops_without_success_json(self):
+        patch = """
+g['subprocess'].check_output = lambda *a, **kw: b'def trim_output(text): return "reference"'
+g['cli_args'].trim_output = lambda *a, **kw: 'incorrect'
+"""
+        result = fleet.run_main(ROOT, "scripts/benchmark_trim_memory.py", patch, optimized=True, timeout=30)
+        self.assertNotEqual(result.returncode, 0, result.stdout)
+        self.assertIn("trim output mismatch", result.stderr)
+        self.assertEqual(result.stdout, "")
 
 
 class CiPythonSetupTests(unittest.TestCase):
@@ -114,6 +171,7 @@ class CiPythonSetupTests(unittest.TestCase):
         self.assertNotIn("pip install", dockerfile)
         self.assertIn("python:3.14.0-slim-bookworm", (ROOT / "README.md").read_text(encoding="utf-8"))
         self.assertIn("uv run --locked pytest", job("ci.yml", "test"))
+
 
 
 if __name__ == "__main__":
