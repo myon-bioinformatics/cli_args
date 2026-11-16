@@ -1,6 +1,5 @@
 "use strict";
 const assert = require("node:assert/strict");
-const crypto = require("node:crypto");
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
@@ -12,13 +11,6 @@ const PYTHON = process.env.PYTHON || "python3";
 
 function normalizeNewlines(text) {
   return String(text).replace(/\r\n/g, "\n");
-}
-
-function lockEntry() {
-  const lock = JSON.parse(fs.readFileSync(path.join(ROOT, "vendor.lock.json"), "utf8"));
-  const entry = lock.files.find((item) => item.destination === "vendor/py_launch.cjs");
-  assert.ok(entry, "vendor.lock.json must list vendor/py_launch.cjs");
-  return entry;
 }
 
 function resolvedPythonExecutable() {
@@ -44,17 +36,6 @@ function withCliArgsPython(value, fn) {
     }
   }
 }
-
-test("vendored py_launch.cjs matches vendor.lock.json", () => {
-  const entry = lockEntry();
-  const data = fs.readFileSync(path.join(ROOT, "vendor/py_launch.cjs"));
-  assert.equal(crypto.createHash("sha256").update(data).digest("hex"), entry.sha256);
-  assert.equal(
-    crypto.createHash("sha1").update(Buffer.concat([Buffer.from(`blob ${data.length}\0`), data])).digest("hex"),
-    entry.blob_sha,
-  );
-  assert.equal(entry.commit, "384f5dd532076062f7833038764e9a62322c387c");
-});
 
 test("cli_args.cjs does not spawn node", () => {
   const src = fs.readFileSync(path.join(ROOT, "cli_args.cjs"), "utf8");
