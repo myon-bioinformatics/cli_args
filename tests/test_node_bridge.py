@@ -312,7 +312,7 @@ class LauncherRegressionTests(unittest.TestCase):
     def test_vendored_launcher_keeps_its_contract(self):
         # Exit 2 on a missing interpreter, -S during discovery, resolvePython noSite/isolated, argv/stdin/exit
         # passthrough and (POSIX) repeated signal forwarding: the parent's shared check, not a local copy.
-        if fleet.node() is None:
+        if fleet.node(ci_jobs=None) is None:  # no CI job may skip this
             self.skipTest("Node 26+ is required for launcher regressions (set NODE)")
         fleet.launcher_contract(self.root, "CLI_ARGS_PYTHON")
 

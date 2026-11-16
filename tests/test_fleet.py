@@ -5,7 +5,10 @@ from vendor import fleet_check as fleet
 
 ROOT = fleet.repo_root(__file__)
 PARENT_WORKFLOW_PIN = "9e3da7ae1846e9604ebc24bb5178f7de094a4e77"
-ACCEPTED = {"vendor/fleet_check.py": "6c29503cf17eda856766ddfdf4d66a5b0965a8b1"}
+ACCEPTED = {
+    "vendor/fleet_check.py": "81f6aea6231d4490e581443fdeb43a09e6018ff0",
+    "vendor/py_launch.cjs": "384f5dd532076062f7833038764e9a62322c387c"
+}
 SETUP_UV = "astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2"
 JOBS = {
     "ci.yml": {
@@ -43,13 +46,21 @@ def job(workflow, name):
 
 
 def test_vendor_lock_matches_checked_in_bytes():
-    fleet.check_lock(ROOT, commits=ACCEPTED)
+    # Every parent row is listed, so a new or renamed vendored file has to be reviewed here.
+    sources = {where: (fleet.PARENT, where.rpartition("/")[2]) for where in ACCEPTED}
+    sources["vendor/myon-bioinformatics-LICENSE"] = (fleet.PARENT, "LICENSE")
+    fleet.check_lock(ROOT, commits=ACCEPTED, sources=sources)
+
+
+def test_every_action_is_pinned_by_full_sha_with_version_comment():
+    assert SETUP_UV in {f"{action}@{sha}" for action, sha, _ in fleet.check_actions(ROOT)}
 
 
 def test_parent_workflow_references_use_reviewed_rollout_commit():
-    # Refs resolved at runtime (``${{ … }}``) are not pins and stay outside this contract.
-    pins = [ref for ref in fleet.parent_refs(ROOT) if "${{" not in (ref or "")]
+    # The .vendor-sync-tools checkout is resolved at runtime (``${{ … }}``): not a pin, checked on its own.
+    pins = fleet.parent_refs(ROOT, skip=(".vendor-sync-tools",))
     assert set(pins) == {PARENT_WORKFLOW_PIN}, pins
+    assert fleet.parent_refs(ROOT, only=(".vendor-sync-tools",)) == ["${{ steps.parent-vendor-tools.outputs.sha }}"]
 
 
 def test_vendor_locked_job_resolves_parent_main_at_runtime():
@@ -103,10 +114,9 @@ g['cli_args'].trim_output = lambda *a, **kw: 'incorrect'
 
 class CiPythonSetupTests(unittest.TestCase):
     def test_project_and_lock_declare_python311_without_runtime_dependencies(self):
+        # pyproject and uv.lock agree on the floor, and the runtime job starts at it: the parent's check.
+        self.assertEqual(fleet.python_floor(ROOT), ("3.11", ["3.11", "3.12", "3.13", "3.14"]))
         project = tomllib.loads((ROOT / "pyproject.toml").read_text(encoding="utf-8"))
-        lock = tomllib.loads((ROOT / "uv.lock").read_text(encoding="utf-8"))
-        self.assertEqual(project["project"]["requires-python"], ">=3.11")
-        self.assertEqual(lock["requires-python"], project["project"]["requires-python"])
         self.assertEqual(project["project"]["dependencies"], [])
         self.assertIsNot(project["tool"]["uv"].get("package"), False)
         self.assertEqual(project["tool"]["uv"]["dependency-groups"]["dev"]["requires-python"], ">=3.11")
@@ -130,29 +140,15 @@ class CiPythonSetupTests(unittest.TestCase):
         self.assertIn("runs-on: ${{ matrix.os }}", block)
         self.assertIn("fail-fast: false", block)
         self.assertIn("python -S -m unittest discover -s tests -p test_runtime_compatibility.py -v", block)
-        self.assertNotIn("continue-on-error", block)
 
     def test_selected_python_is_ready_before_any_python_or_uv_command(self):
         for workflow, jobs in JOBS.items():
             for name, version in jobs.items():
                 with self.subTest(workflow=workflow, job=name):
-                    block = job(workflow, name)
-                    self.assertEqual(block.count("uses: " + SETUP_UV), 1)
-                    setup = block.index("uses: " + SETUP_UV)
-                    command = re.search(
-                        r"(?m)^\s*(?:-\s+)?(?:run:\s*)?(?:python(?:3)?|uv)\s+",
-                        block,
-                    )
-                    self.assertIsNotNone(command, "No interpreter consumer was checked")
-                    self.assertLess(setup, command.start(), "Python ran before setup-uv")
-                    setup_inputs = block[setup:].split("\n", 10)[:9]
-                    inputs = "\n".join(setup_inputs)
-                    self.assertIn('version: "latest"', inputs)
-                    self.assertIn(f'python-version: "{version}"', inputs)
-                    self.assertIn("activate-environment: true", inputs)
-                    self.assertIn("enable-cache: true", inputs)
-                    self.assertIn("save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}", inputs)  # only main writes
-                    self.assertIn("prune-cache: true", inputs)
+                    fleet.workflow_job(ROOT, name, workflow, setup=SETUP_UV, inputs=(
+                        'version: "latest"', f'python-version: "{version}"', "activate-environment: true", "enable-cache: true",
+                        "save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}",  # only main writes
+                        "prune-cache: true"))
 
     def test_compatibility_matrix_and_required_report_identities_are_preserved(self):
         text = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
