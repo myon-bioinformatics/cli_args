@@ -11,7 +11,7 @@ dependencies = []
 
 [dependency-groups]
 dev = ["pytest>=8"]
-stdlib-test = ["pytest>=8", "pyyaml>=6"]
+stdlib-test = ["pytest>=8"]
 
 # The installed artifact is one stdlib-only module; dev tools stay in dependency groups.
 [tool.uv]
