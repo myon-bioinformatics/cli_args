@@ -20,6 +20,7 @@ Use four evidence labels consistently:
 | `grep` | `-F -x -m 1 -- PATTERN FILE` | Literal match + whole-line match + bounded work + explicit option boundary. |
 | pytest | `-k "expr"`, `--tb=short`, `--maxfail=1` | Select relevant tests, shorten diagnostics, and stop early when appropriate. |
 | Playwright | `--grep`, `--project=chromium`, `--list`, `--last-failed` | Select tests/projects or collect/rerun without broad execution. |
+| markdown converter tools | `--case GLOB` (repeat for OR), `--exclude GLOB`, `--list` | Select evaluation cases by key/id glob before any conversion runs; duplicates and an empty selection are errors. Now shared as `add_selection_arguments` / `select_keys` in this repository. |
 
 Official references:
 - GNU sed: https://www.gnu.org/software/sed/manual/sed.html

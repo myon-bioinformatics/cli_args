@@ -33,6 +33,8 @@ For finer control, call `add_argument()` or `add_mutually_exclusive_group()` dir
 
 `add_output_arguments(parser)` adds `--format text/json` and `--output`; `add_output_arguments(parser, json_flag=True)` also accepts `--json` as sugar for `--format json`, for the many existing callers that grew a boolean flag first. `add_execution_arguments(parser)` adds `--dry-run` / `--timeout` / `--cwd`. Pick only the sets you need and avoid name clashes on the caller side.
 
+`add_selection_arguments(parser)` adds repeatable glob selection (`--case` / `--exclude` / `--list` by default; rename them to the caller's noun), the pattern measured in the markdown converter tools. `select_keys(keys, patterns, exclude)` applies it deterministically: a pattern matches the whole key or the part after the first `:`, input order is preserved, and duplicate keys or an empty selection raise `ValueError` instead of silently running everything or nothing.
+
 Agent-facing failure contract, shared across the repositories (measured in [docs/cli-argument-patterns.md](docs/cli-argument-patterns.md)): `EXIT_OK` / `EXIT_FAILURE` / `EXIT_USAGE` / `EXIT_PARTIAL` are `0` / `1` / `2` / `3`; `requested_format(argv)` reads the last `--format` before `--` from raw argv; `write_error(message, error="usage", exit_code=EXIT_USAGE, format="json")` writes one JSON record (`ok`, `error`, `message`, `exit_code`) or one `error: code: message` line to stderr and returns the exit code; `make_parser(json_errors=True)` makes argparse usage errors use that record when `--format json` was requested. `scripts/survey_cli_surfaces.py CLONES_DIR` re-measures the org-wide option vocabulary with exactly these helpers.
 
 ## Building commands

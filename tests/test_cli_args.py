@@ -4,9 +4,10 @@ from pathlib import Path
 import pytest
 
 from cli_args import (EXIT_FAILURE, EXIT_OK, EXIT_PARTIAL, EXIT_USAGE, Argument, Command,
-                      CommandResult, add_execution_arguments, add_output_arguments, build_env,
-                      make_parser, parse_args, pytest_command, render_output, require_when,
-                      requested_format, run_command, write_error, write_output)
+                      CommandResult, add_execution_arguments, add_output_arguments,
+                      add_selection_arguments, build_env, make_parser, parse_args, pytest_command,
+                      render_output, require_when, requested_format, run_command, select_keys,
+                      write_error, write_output)
 
 ROOT = Path(__file__).resolve().parents[1]
 
@@ -90,6 +91,50 @@ def test_json_flag_is_sugar_for_format_json():
         plain.parse_args(["--json"])
     with pytest.raises(TypeError, match="json_flag must be bool"):
         add_output_arguments(make_parser(), json_flag=1)
+
+
+def test_selection_arguments_parse_and_select():
+    parser = make_parser()
+    add_selection_arguments(parser)
+    args = parser.parse_args(["--case", "html:basic*", "--case", "html:table",
+                              "--exclude", "table", "--list"])
+    assert args.case == ["html:basic*", "html:table"] and args.exclude == ["table"]
+    assert args.list is True
+    keys = ["html:basic_blocks", "html:table", "md:basic_notes"]
+    assert select_keys(keys, args.case or ("*",), args.exclude or ()) == ["html:basic_blocks"]
+    unfiltered = parser.parse_args([])
+    assert unfiltered.case is None and unfiltered.list is False
+    assert select_keys(keys, unfiltered.case or ("*",)) == keys
+
+
+def test_selection_arguments_can_be_renamed_or_unlisted():
+    parser = make_parser()
+    add_selection_arguments(parser, option="--target", list_option=None)
+    args = parser.parse_args(["--target", "a*"])
+    assert args.target == ["a*"]
+    with pytest.raises(SystemExit):
+        parser.parse_args(["--list"])
+
+
+def test_select_keys_matches_whole_key_or_id_suffix():
+    keys = ["html:basic_blocks", "html:table", "md:table"]
+    assert select_keys(keys) == keys
+    assert select_keys(keys, ("basic*",)) == ["html:basic_blocks"]
+    assert select_keys(keys, ("html:*",), ("html:table",)) == ["html:basic_blocks"]
+    assert select_keys(keys, ("table",)) == ["html:table", "md:table"]
+
+
+def test_select_keys_rejects_duplicates_empty_results_and_scalar_rules():
+    with pytest.raises(ValueError, match="duplicate"):
+        select_keys(["a", "a"])
+    with pytest.raises(ValueError, match="no keys selected"):
+        select_keys(["a"], ("missing*",))
+    with pytest.raises(ValueError, match="nonempty"):
+        select_keys(["a"], ("",))
+    with pytest.raises(TypeError):
+        select_keys(["a"], "a*")
+    with pytest.raises(TypeError):
+        select_keys(["a"], {"a*"})
 
 
 def test_exit_vocabulary_is_fixed():
