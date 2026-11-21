@@ -5,7 +5,7 @@ External tools keep their own option semantics; pass their argv unchanged.
 """
 from __future__ import annotations
 
-import argparse, base64, json, math, os, re, shutil, subprocess, sys, tempfile
+import argparse, base64, fnmatch, json, math, os, re, shutil, subprocess, sys, tempfile
 from collections import deque; from collections.abc import Sequence as SequenceABC; from dataclasses import asdict, dataclass, field; from difflib import get_close_matches; from pathlib import Path; from threading import Event, Lock, Thread; from typing import Any, Iterable, Mapping, Sequence, TextIO
 
 
@@ -13,7 +13,8 @@ __version__ = "0.0.0"
 
 __all__ = [
     "Argument", "make_parser", "parse_args", "add_output_arguments",
-    "add_execution_arguments", "add_node_arguments", "require_when",
+    "add_execution_arguments", "add_node_arguments", "add_selection_arguments",
+    "select_keys", "require_when",
     "positive_seconds", "requested_format", "write_error",
     "EXIT_OK", "EXIT_FAILURE", "EXIT_USAGE", "EXIT_PARTIAL",
     "Command", "CommandResult", "run_command",
@@ -290,6 +291,52 @@ def add_node_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--node", metavar="PATH", help="Node.js executable path")
     parser.add_argument("--node-flag", action="append", default=[], dest="node_flags",
                         metavar="FLAG", help="repeatable flag before the script target")
+
+
+def add_selection_arguments(parser: argparse.ArgumentParser, *, option: str = "--case",
+                            exclude_option: str = "--exclude",
+                            list_option: str | None = "--list") -> None:
+    """Add repeatable glob selection arguments, as measured in the markdown
+    converter tools: the include option adds keys (repeat for OR), the exclude
+    option removes keys, and the list flag names the selection without doing
+    the work. Pair with :func:`select_keys`. The append destinations default
+    to None, so callers pass ``args.case or ("*",)`` for an unfiltered run.
+    Rename the options to the caller's noun (``--case``, ``--target``, ...)
+    and pass ``list_option=None`` to omit the list flag."""
+    parser.add_argument(option, action="append", metavar="GLOB",
+                        help="key or id glob to include; repeat for OR (default: all keys)")
+    parser.add_argument(exclude_option, action="append", metavar="GLOB",
+                        help="key or id glob to exclude; repeatable")
+    if list_option is not None:
+        parser.add_argument(list_option, action="store_true",
+                            help="list the selected keys without doing the work")
+
+
+def select_keys(keys: Sequence[str], patterns: Sequence[str] = ("*",),
+                exclude: Sequence[str] = ()) -> list[str]:
+    """Select keys by include/exclude globs, preserving the input order.
+
+    A pattern matches a key when it fnmatch-matches the whole key or the
+    part after the first ``:``, so ``basic*`` selects ``html:basic_blocks``.
+    Duplicate keys and an empty selection raise ValueError, so a typo can
+    never silently turn into "run nothing" or "run everything".
+    """
+    keys = _tokens(keys)
+    if len(keys) != len(set(keys)):
+        raise ValueError("duplicate selection keys")
+    patterns = _tokens(patterns)
+    exclude = _tokens(exclude)
+    if any(not rule for rule in patterns + exclude):
+        raise ValueError("selection rules must be nonempty strings")
+
+    def matches(key: str, rules: tuple[str, ...]) -> bool:
+        return any(fnmatch.fnmatchcase(key, rule)
+                   or fnmatch.fnmatchcase(key.split(":", 1)[-1], rule) for rule in rules)
+
+    result = [key for key in keys if matches(key, patterns) and not matches(key, exclude)]
+    if not result:
+        raise ValueError("no keys selected")
+    return result
 
 
 def require_when(parser: argparse.ArgumentParser, args: argparse.Namespace, *,
