@@ -90,6 +90,22 @@ def test_survey_counts_options_help_and_ci_commands(tmp_path):
     assert "repositories: 2  cli files: 2" in text and text.count("\n") > 8
 
 
+def test_survey_counts_parser_subclasses_and_the_shared_helper(tmp_path):
+    repo = tmp_path / "clones" / "gamma"
+    (repo / ".git").mkdir(parents=True)
+    (repo / "subclass.py").write_text(
+        "import argparse\nclass _AgentArgumentParser(argparse.ArgumentParser):\n    pass\n"
+        "parser = _AgentArgumentParser()\nparser.add_argument('--strict', help='fail on findings')\n",
+        encoding="utf-8")
+    (repo / "shared.py").write_text(
+        "from cli_args import make_parser\nparser = make_parser(description='x')\nparser.add_argument('--limit')\n",
+        encoding="utf-8")
+    clis = {c["file"]: c for c in survey_module["survey"](tmp_path / "clones")["repos"]["gamma"]["clis"]}
+    assert sorted(clis) == ["shared.py", "subclass.py"]
+    assert clis["subclass.py"]["parsers"] == 1 and clis["subclass.py"]["options_without_help"] == []
+    assert clis["shared.py"]["parsers"] == 1 and clis["shared.py"]["options_without_help"] == ["--limit"]
+
+
 def test_cli_uses_the_shared_contract(tmp_path):
     clones = _make_clones(tmp_path)
     out = tmp_path / "survey.json"

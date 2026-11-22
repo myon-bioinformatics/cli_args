@@ -3,7 +3,7 @@
 python -S scripts/survey_cli_surfaces.py CLONES_DIR [--format text|json] [--output FILE]
 
 CLONES_DIR holds one checkout per repository. For every ``.py`` file that
-builds an ``ArgumentParser`` the survey records its long options, which of them
+builds an ``ArgumentParser`` (also a subclass, or ``cli_args.make_parser``) the survey records its long options, which of them
 carry ``help=``, whether ``--format`` / ``--json`` / ``--timeout`` exist, the
 exit codes written as literals, and the test commands found in its workflows.
 The text report is the org-wide option vocabulary; the JSON report keeps the
@@ -56,7 +56,7 @@ def scan_cli_file(path: Path, repo: Path) -> dict[str, Any] | None:
         source = path.read_text(encoding="utf-8")
     except (OSError, UnicodeDecodeError):
         return None
-    if "ArgumentParser" not in source and "add_parser(" not in source:
+    if not any(mark in source for mark in ("ArgumentParser", "add_parser(", "make_parser(")):
         return None
     try:
         tree = ast.parse(source)
@@ -69,7 +69,7 @@ def scan_cli_file(path: Path, repo: Path) -> dict[str, Any] | None:
         if not isinstance(node, ast.Call):
             continue
         name = _call_name(node)
-        if name == "ArgumentParser":
+        if name.endswith("ArgumentParser") or name == "make_parser":  # subclasses and the shared cli_args helper
             parsers += 1
         elif name == "add_parser" and node.args and isinstance(node.args[0], ast.Constant):
             subcommands.append(str(node.args[0].value))
