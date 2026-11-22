@@ -31,6 +31,20 @@ args = parse_args([
 
 For finer control, call `add_argument()` or `add_mutually_exclusive_group()` directly on the parser returned by `make_parser()`. `Argument.names`, an explicit `parse_args(..., argv=...)`, and `require_when(..., required=...)` all take an ordered, finite sequence; a single string or implicit expansion of a set/dict/generator is rejected. `require_when(parser, args, when=..., required=["output"])` rejects, via `parser.error()`, any listed item whose value is `None` when the condition holds. `False` and `0` count as given values.
 
+TopOntoLogy's snapshots and TaxOntOy's graph inputs pair a label with a path. Use `named_path` with argparse's `append` action to collect them in order, including repeated labels. It splits on the first `=`, strips surrounding whitespace from both fields, and returns a name and a `Path`. The caller decides which labels are valid and when to open the file.
+
+```python
+from cli_args import int_range, make_parser, named_path
+
+parser = make_parser()
+parser.add_argument("--graph", action="append", type=named_path, metavar="NAME=PATH")
+parser.add_argument("--max-files", type=int_range(minimum=1))
+args = parser.parse_args(["--graph", "audit=資料/a=b.json", "--max-files", "3"])
+# args.graph == [("audit", Path("資料/a=b.json"))], args.max_files == 3
+```
+
+`int_range(minimum=..., maximum=...)` accepts either or both bounds, inclusive. Use a minimum of 1 for a positive count, as in gh_identity's `--max-files`, or 0 for a byte limit that allows empty output.
+
 `add_output_arguments(parser)` adds `--format text/json` and `--output`; `add_output_arguments(parser, json_flag=True)` also accepts `--json` as sugar for `--format json`, for the many existing callers that grew a boolean flag first. `add_execution_arguments(parser)` adds `--dry-run` / `--timeout` / `--cwd`. Pick only the sets you need and avoid name clashes on the caller side.
 
 `add_selection_arguments(parser)` adds repeatable glob selection (`--case` / `--exclude` / `--list` by default; rename them to the caller's noun), the pattern measured in the markdown converter tools. `select_keys(keys, patterns, exclude)` applies it deterministically: a pattern matches the whole key or the part after the first `:`, input order is preserved, and duplicate keys or an empty selection raise `ValueError` instead of silently running everything or nothing.
