@@ -5,7 +5,7 @@ import pytest
 
 from cli_args import (EXIT_FAILURE, EXIT_OK, EXIT_PARTIAL, EXIT_USAGE, Argument, Command,
                       CommandResult, add_execution_arguments, add_output_arguments,
-                      add_selection_arguments, build_env, make_parser, parse_args, pytest_command,
+                      add_selection_arguments, build_env, int_range, make_parser, named_path, parse_args, pytest_command,
                       render_output, require_when, requested_format, run_command, select_keys,
                       write_error, write_output)
 
@@ -59,6 +59,51 @@ def test_conditional_required_and_exclusive():
     group.add_argument("--verbose", action="store_true")
     with pytest.raises(SystemExit):
         parser.parse_args(["--quiet", "--verbose"])
+
+
+def test_named_path_preserves_repeated_names_order_and_path_contents():
+    args = parse_args([Argument(("--graph",), {"type": named_path, "action": "append"})],
+                      ["--graph", " audit = 入力 資料/a=b.json ", "--graph=audit=-"])
+    assert args.graph == [("audit", Path("入力 資料/a=b.json")), ("audit", Path("-"))]
+
+
+@pytest.mark.parametrize("value", ["graph.json", " =file", "audit=  ", ""])
+def test_named_path_reports_option_and_expected_form(value, capsys):
+    parser = make_parser()
+    parser.add_argument("--snapshot", type=named_path)
+    with pytest.raises(SystemExit) as exc:
+        parser.parse_args(["--snapshot", value])
+    assert exc.value.code == EXIT_USAGE
+    error = capsys.readouterr().err
+    assert "--snapshot" in error and "NAME=PATH" in error
+
+
+def test_integer_bounds_are_optional_and_inclusive():
+    parse = int_range(minimum=-2, maximum=0)
+    assert [parse("-2"), parse("-1"), parse("0")] == [-2, -1, 0]
+    assert int_range(minimum=1)("100") == 100
+    assert int_range(maximum=0)("-100") == -100
+    assert int_range(minimum=0, maximum=0)("0") == 0
+
+
+@pytest.mark.parametrize(("value", "message"), [
+    ("-3", "at least -2"), ("1", "at most 0"), ("1.5", "expected an integer"),
+])
+def test_integer_range_reports_usage_errors(value, message, capsys):
+    with pytest.raises(SystemExit) as exc:
+        parse_args([Argument(("--count",), {"type": int_range(minimum=-2, maximum=0)})],
+                   ["--count", value])
+    assert exc.value.code == EXIT_USAGE
+    assert message in capsys.readouterr().err
+
+
+def test_integer_range_rejects_invalid_bounds_at_definition_time():
+    with pytest.raises(ValueError):
+        int_range(minimum=1, maximum=0)
+    with pytest.raises(TypeError):
+        int_range(minimum=False)
+    with pytest.raises(TypeError):
+        int_range(maximum=1.5)
 
 
 @pytest.mark.parametrize("value", ["0", "-1", "nan", "inf", "bad"])

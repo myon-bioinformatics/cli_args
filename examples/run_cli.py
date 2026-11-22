@@ -12,7 +12,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parents[1]))
 from cli_args import (Command, add_execution_arguments, add_output_arguments,
-                      build_env, make_parser, run_command, write_output)
+                      build_env, int_range, make_parser, run_command, write_output)
 
 
 def main(argv=None):
@@ -22,7 +22,7 @@ def main(argv=None):
         formatter_class=argparse.RawDescriptionHelpFormatter,
     )
     add_execution_arguments(parser)
-    parser.add_argument("--max-output-bytes", type=int, metavar="N",
+    parser.add_argument("--max-output-bytes", type=int_range(minimum=0), metavar="N",
                         help="stop child if captured stdout+stderr exceeds N bytes")
     parser.add_argument("--no-overwrite", action="store_true",
                         help="refuse existing output file or symlink")
@@ -44,8 +44,6 @@ def main(argv=None):
         command = Command(tuple(tokens[boundary + 1:]))
     except (TypeError, ValueError) as exc:
         parser.error(str(exc))
-    if args.max_output_bytes is not None and args.max_output_bytes < 0:
-        parser.error("--max-output-bytes must be nonnegative")
     stdin_data = None
     if args.stdin is not None:
         stdin_data = args.stdin

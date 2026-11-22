@@ -6,7 +6,7 @@ External tools keep their own option semantics; pass their argv unchanged.
 from __future__ import annotations
 
 import argparse, base64, fnmatch, json, math, os, re, shutil, subprocess, sys, tempfile
-from collections import deque; from collections.abc import Sequence as SequenceABC; from dataclasses import asdict, dataclass, field; from difflib import get_close_matches; from pathlib import Path; from threading import Event, Lock, Thread; from typing import Any, Iterable, Mapping, Sequence, TextIO
+from collections import deque; from collections.abc import Sequence as SequenceABC; from dataclasses import asdict, dataclass, field; from difflib import get_close_matches; from pathlib import Path; from threading import Event, Lock, Thread; from typing import Any, Callable, Iterable, Mapping, Sequence, TextIO
 
 
 __version__ = "0.0.0"
@@ -15,7 +15,7 @@ __all__ = [
     "Argument", "make_parser", "parse_args", "add_output_arguments",
     "add_execution_arguments", "add_node_arguments", "add_selection_arguments",
     "select_keys", "require_when",
-    "positive_seconds", "requested_format", "write_error",
+    "named_path", "int_range", "positive_seconds", "requested_format", "write_error",
     "EXIT_OK", "EXIT_FAILURE", "EXIT_USAGE", "EXIT_PARTIAL",
     "Command", "CommandResult", "run_command",
     "render_output", "write_output", "pytest_command", "trim_output",
@@ -242,6 +242,37 @@ def parse_args(arguments: Iterable[Argument] = (), argv: Sequence[str] | None = 
                **kwargs: Any) -> argparse.Namespace:
     tokens = None if argv is None else _tokens(argv)
     return make_parser(arguments, **kwargs).parse_args(tokens)
+
+
+def named_path(value: str) -> tuple[str, Path]:
+    """Parse NAME=PATH at the first equals sign, trimming surrounding whitespace."""
+    name, separator, path = value.partition("=")
+    name, path = name.strip(), path.strip()
+    if not separator or not name or not path:
+        raise argparse.ArgumentTypeError("expected NAME=PATH with a nonempty name and path")
+    return name, Path(path)
+
+
+def int_range(*, minimum: int | None = None, maximum: int | None = None) -> Callable[[str], int]:
+    """Return an argparse integer converter with optional inclusive bounds."""
+    for bound in (minimum, maximum):
+        if bound is not None and type(bound) is not int:
+            raise TypeError("bounds must be integers or None")
+    if minimum is not None and maximum is not None and minimum > maximum:
+        raise ValueError("minimum exceeds maximum")
+
+    def parse(value: str) -> int:
+        try:
+            number = int(value)
+        except ValueError as exc:
+            raise argparse.ArgumentTypeError("expected an integer") from exc
+        if minimum is not None and number < minimum:
+            raise argparse.ArgumentTypeError(f"must be at least {minimum}")
+        if maximum is not None and number > maximum:
+            raise argparse.ArgumentTypeError(f"must be at most {maximum}")
+        return number
+
+    return parse
 
 
 def positive_seconds(value: str) -> float:
