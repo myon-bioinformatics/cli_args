@@ -17,7 +17,7 @@ __all__ = [
     "select_keys", "require_when",
     "named_path", "int_range", "positive_seconds", "requested_format", "write_error",
     "EXIT_OK", "EXIT_FAILURE", "EXIT_USAGE", "EXIT_PARTIAL",
-    "Command", "CommandResult", "run_command",
+    "Command", "CommandResult", "run_command", "CliResult", "run_cli",
     "render_output", "write_output", "pytest_command", "trim_output",
     "pytest_summary", "build_env", "NodeNotFoundError", "is_node_target",
     "resolve_node", "node_command", "run_node", "node_or_command",
@@ -599,6 +599,54 @@ def _run_command_with_bytes(command: Command, *, cwd: str | os.PathLike[str] | N
         return _command_result_with_bytes(command, None, exc.stdout, exc.stderr, True, timed_out=True)
     return _command_result_with_bytes(command, completed.returncode, completed.stdout,
                                       completed.stderr, True)
+
+
+@dataclass(frozen=True)
+class CliResult(CommandResult):
+    """A CommandResult with the two JSON views tests assert on most.
+
+    ``json()`` parses stdout (the ``--format json`` payload); ``error()``
+    parses stderr (the single JSON error object ``write_error`` emits).
+    A stream that is not JSON raises ValueError naming the exit code and
+    the first bytes seen, instead of a bare json.JSONDecodeError whose
+    message never says which command produced the text.
+    """
+
+    def _parse(self, stream: str, text: str) -> Any:
+        try:
+            return json.loads(text)
+        except json.JSONDecodeError as exc:
+            preview = text[:120].replace("\n", " ")
+            raise ValueError(
+                f"cli_args: {stream} is not JSON (exit {self.returncode}): {preview!r}"
+            ) from exc
+
+    def json(self) -> Any:
+        return self._parse("stdout", self.stdout)
+
+    def error(self) -> Any:
+        return self._parse("stderr", self.stderr)
+
+
+def run_cli(target: str | os.PathLike[str], *args: str | os.PathLike[str],
+            python: str | os.PathLike[str] | None = None,
+            timeout: float | None = None, cwd: str | os.PathLike[str] | None = None,
+            env: Mapping[str, str] | None = None,
+            stdin: str | bytes | None = None) -> CliResult:
+    """Run a Python CLI script once and return its captured result.
+
+    This is the test-side counterpart of ``run_command``: the interpreter
+    (``python``, default ``sys.executable``), the script ``target`` and the
+    argument tokens are assembled with ``Command`` so quoting and splitting
+    never reappear in test code. Nonzero exits are results, as with
+    ``run_command``; launch failures raise OSError. Use ``Command`` +
+    ``run_command`` directly when the target is not a Python script.
+    """
+    executable = sys.executable if python is None else _token(python)
+    command = Command((executable, _token(target), *(_token(arg) for arg in args)))
+    result = run_command(command, cwd=cwd, timeout=timeout, env=env, stdin=stdin)
+    return CliResult(result.argv, result.returncode, result.stdout, result.stderr,
+                     result.executed, result.timed_out, result.output_limited)
 
 
 def render_output(value: Any, *, format: str = "text") -> str:
