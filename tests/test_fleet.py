@@ -4,7 +4,7 @@ import json, re, tomllib, unittest
 from vendor import fleet_check as fleet
 
 ROOT = fleet.repo_root(__file__)
-PARENT_WORKFLOW_PIN = "98a0e611cc879fde2d047da806de5a2121a65524"
+PARENT_WORKFLOW_PIN = "fbf433b296ec047f1c9acdf4d5d12c81ff7f59e8"
 ACCEPTED = {
     "vendor/fleet_check.py": "64db25eb0fd9025dbe3cbcbced8b88a39ecb9266",
     "vendor/py_launch.cjs": "384f5dd532076062f7833038764e9a62322c387c"
