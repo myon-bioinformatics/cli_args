@@ -166,7 +166,7 @@ or reproducibility—not merely because they are uncommon.
 
 ## Testing CLIs: one invocation shape for the fleet
 
-Tests across the repositories hand-roll `subprocess.run([sys.executable, script, ...])` plus `json.loads` on the captured streams (measured 2026-11-23: 48 test files in Aoi, 10 in markdown and 6 in gh_identity call `subprocess.run` directly). `run_cli(target, *args)` in cli_args is the shared shape: argv is assembled by `Command`, nonzero exits are results, `.json()` reads the stdout payload and `.error()` reads the stderr error object. Adopt it for tests that invoke the repository's own Python CLIs; tests that drive git, docker or other external tools keep their own invocations.
+Tests across the repositories hand-roll `subprocess.run([sys.executable, script, ...])` plus `json.loads` on the captured streams (measured 2026-11-23: 48 test files in Aoi, 10 in markdown and 6 in gh_identity call `subprocess.run` directly). `run_cli(target, *args, python_options=...)` in cli_args is the shared shape (`python_options` carries interpreter flags such as `"-S"` for stdlib-only converter runs): argv is assembled by `Command`, nonzero exits are results, `.json()` reads the stdout payload and `.error()` reads the stderr error object. Adopt it for tests that invoke the repository's own Python CLIs; tests that drive git, docker or other external tools keep their own invocations.
 
 ## Patterns recovered from existing investigation/test commands
 
