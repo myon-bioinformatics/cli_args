@@ -1,5 +1,5 @@
 version = 1
-revision = 5
+revision = 3
 requires-python = ">=3.11"
 
 [[package]]
@@ -11,18 +11,11 @@ source = { editable = "." }
 dev = [
     { name = "pytest" },
 ]
-stdlib-test = [
-    { name = "pytest" },
-]
-
-[package.group-requires-python]
-dev = ">=3.11"
 
 [package.metadata]
 
 [package.metadata.requires-dev]
 dev = [{ name = "pytest", marker = "python_full_version >= '3.11'", specifier = ">=8" }]
-stdlib-test = [{ name = "pytest", specifier = ">=8" }]
 
 [[package]]
 name = "colorama"
