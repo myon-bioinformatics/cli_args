@@ -1180,7 +1180,7 @@ def _main(argv: Sequence[str] | None = None) -> int:
         formatter_class=help_formatter,
         exit_on_error=False,
     )
-    parser.add_argument("--version", action="version", version="%(prog)s " + __version__)
+    parser.add_argument("--version", action="version", version="%(prog)s " + __version__,help="show the version and exit")
     subparsers = parser.add_subparsers(dest="command", required=False)
     subparsers.add_parser(
         "run",
@@ -1199,7 +1199,7 @@ def _main(argv: Sequence[str] | None = None) -> int:
         description="Read one JSON value from stdin and write render_output to stdout.",
         formatter_class=help_formatter,
     )
-    render_parser.add_argument("--format", choices=("text", "json"), default="text")
+    render_parser.add_argument("--format", choices=("text", "json"), default="text",help="output format (default: %(default)s)")
     render_parser.add_argument(
         "--response-max-bytes",
         type=int,
