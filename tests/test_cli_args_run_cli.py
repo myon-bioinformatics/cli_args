@@ -94,3 +94,9 @@ def test_result_still_renders_as_a_command_result(tmp_path):
     payload = json.loads(cli_args.render_output(result, format="json"))
     assert payload["returncode"] == 0
     assert payload["executed"] is True
+
+
+def test_run_cli_python_options_reach_the_interpreter(tmp_path):
+    script = write_script(tmp_path, "import json, sys\nprint(json.dumps(sys.flags.no_site))\n")
+    assert run_cli(script).json() == 0
+    assert run_cli(script, python_options=("-S",)).json() == 1
