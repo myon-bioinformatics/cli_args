@@ -3,10 +3,10 @@
 📘 [利用ガイド / Usage guide](https://myon-bioinformatics.github.io/cli_args/) (GitHub Pages)
 
 <p align="center">
-  <img src="docs/brand/icon.png" alt="cli_args icon" width="160" />
+  <img src="https://myon-bioinformatics.github.io/cli_args/icon.png" alt="cli_args icon" width="160" />
 </p>
 
-[Icon](docs/brand/icon.png) · [Favicon](docs/brand/favicon.png)
+[Icon](https://myon-bioinformatics.github.io/cli_args/icon.png) · [Favicon](https://myon-bioinformatics.github.io/cli_args/favicon.png)
 
 A single-file, standard-library-only Python toolkit for reusable CLI argument definitions, validation, command construction, execution, and JSON/text output, backed by practical CLI tests.
 
