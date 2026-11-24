@@ -18,7 +18,7 @@ jobs:
   changes:
     permissions:
       contents: read
-    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-change-detection.yml@fbf433b296ec047f1c9acdf4d5d12c81ff7f59e8
+    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-change-detection.yml@dbe7e16be53f9e5b8c9ba29ff6ed8be0899a35ff
 
   vendor-locked:
     if: needs.changes.outputs.product_changed == 'true'
@@ -292,7 +292,7 @@ jobs:
     permissions:
       contents: read
       actions: read
-    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-junit-identity.yml@fbf433b296ec047f1c9acdf4d5d12c81ff7f59e8
+    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-junit-identity.yml@dbe7e16be53f9e5b8c9ba29ff6ed8be0899a35ff
     with:
       commit-sha: ${{ github.event.pull_request.head.sha || github.sha }}
       expected-reports: '["negative-evidence-raw/intentional-failure.xml"]'
@@ -305,7 +305,7 @@ jobs:
     permissions:
       contents: read
       actions: read
-    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-junit-identity.yml@fbf433b296ec047f1c9acdf4d5d12c81ff7f59e8
+    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-junit-identity.yml@dbe7e16be53f9e5b8c9ba29ff6ed8be0899a35ff
     with:
       commit-sha: ${{ github.event.pull_request.head.sha || github.sha }}
       expected-reports: '["junit-py3.11/pytest-3.11.xml","junit-py3.12/pytest-3.12.xml","junit-py3.14/pytest-3.14.xml","junit-node-ubuntu-latest-26/node-ubuntu-latest-26.xml","junit-node-ubuntu-latest-latest/node-ubuntu-latest-latest.xml","junit-node-windows-latest-26/node-windows-latest-26.xml","junit-node-windows-latest-latest/node-windows-latest-latest.xml","junit-node-macos-latest-26/node-macos-latest-26.xml","junit-node-macos-latest-latest/node-macos-latest-latest.xml","junit-docker-integration/docker-integration.xml","junit-container-real/container-real.xml","junit-core-windows/core-windows.xml","junit-core-macos/core-macos.xml"]'
@@ -317,4 +317,4 @@ jobs:
     if: needs.changes.outputs.workflow_changed == 'true'
     permissions:
       contents: read
-    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-actionlint.yml@fbf433b296ec047f1c9acdf4d5d12c81ff7f59e8
+    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-actionlint.yml@dbe7e16be53f9e5b8c9ba29ff6ed8be0899a35ff
