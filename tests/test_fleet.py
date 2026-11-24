@@ -7,7 +7,7 @@ ROOT = fleet.repo_root(__file__)
 PARENT_WORKFLOW_PIN = "1368174821fb03be258ecf3312ce0ea809f6ea22"
 ACCEPTED = {
     "vendor/fleet_check.py": "bc57f08a590ee1cb33a8bb37c1bb3b8f28a2f3c9",
-    "vendor/py_launch.cjs": "384f5dd532076062f7833038764e9a62322c387c"
+    "vendor/py_launch.cjs": "de63762d8485e4d398a651715d34ebf4a04c23f2"
 }
 SETUP_UV = "astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2"
 JOBS = {
@@ -98,6 +98,15 @@ def test_pytest_jobs_run_through_uv_and_node_tests_stay():
     dockerfile = (ROOT / "tests/docker/Dockerfile").read_text(encoding="utf-8")
     assert 'CMD ["uv", "run", "--locked", "pytest"' in dockerfile
     assert "python -m pytest" not in dockerfile
+
+
+def test_no_per_tool_wrapper_and_readme_documents_the_direct_command():
+    assert not (ROOT / "cli_args.cjs").exists()
+    assert not (ROOT / "cli_args.d.cts").exists()
+    readme = (ROOT / "README.md").read_text(encoding="utf-8")
+    assert "node vendor/py_launch.cjs --env-var CLI_ARGS_PYTHON -- cli_args.py" in readme
+    pkg = json.loads((ROOT / "package.json").read_text(encoding="utf-8"))
+    assert pkg["engines"]["node"] == ">=26"
 
 
 class OptimizedBenchmarkTests(unittest.TestCase):

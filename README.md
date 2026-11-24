@@ -97,32 +97,45 @@ command = node_or_command(["playwright.cjs", "test", "--list"], node_flags=["--n
 
 ## Calling `cli_args.py` from Node.js
 
-To use the Python-side `run_command` / `render_output` from Node 26+, require `cli_args.cjs` at the repository root. `cli_args.cjs` rejects Node older than 26 at call time. It only launches `cli_args.py run` / `render` through the parent repository `myon-bioinformatics`'s shared launcher `vendor/py_launch.cjs`; it never launches Node from Node. `shell: true` is not used. The stdin limit is `py_launch`'s `maxInputBytes` (`CLI_STDIN_MAX_BYTES`, 4 MiB), and response capture is `responseMaxBytes` (96 MiB; `maxBuffer` adds only the shared 512-byte margin).
+There is no per-tool `cli_args.cjs` wrapper: Node 26+ runs `cli_args.py` directly through the parent repository `myon-bioinformatics`'s shared launcher `vendor/py_launch.cjs` (pinned in `vendor.lock.json`). `py_launch.cjs` rejects Node older than 26, never launches Node from Node, and never uses `shell: true`. Use `maxInputBytes` (`CLI_STDIN_MAX_BYTES`, 4 MiB) and `responseMaxBytes` (96 MiB; `maxBuffer` adds only the shared 512-byte `HOST_RESPONSE_MARGIN_BYTES` margin) when invoking `cli_args.py run` / `render`.
 
 | Lookup | Meaning |
 |---|---|
-| `opts.python` / `runCommand(..., { python })` | Explicit (no fallback on failure) |
-| `CLI_ARGS_PYTHON` | Explicit environment variable (`py_launch`'s `envVar`) |
+| `opts.python` | Explicit (no fallback on failure) |
+| `CLI_ARGS_PYTHON` | Explicit environment variable (`--env-var CLI_ARGS_PYTHON` / `envVar`) |
 | `PYTHON` → `python3` → `python` (`py -3` on Windows) | Automatic lookup |
 
-```javascript
-const {runCommand, render} = require("./cli_args.cjs");
-
-const result = runCommand(["git", "status", "--short"], {cwd: "/path/to/repo", timeout: 30});
-console.log(result.returncode, result.stdout, result.stdout_b64);
-
-const text = render({title: "日本語"}, "json");
+```bash
+printf '%s\n' '{"argv":["git","status","--short"]}' | node vendor/py_launch.cjs --env-var CLI_ARGS_PYTHON -- cli_args.py run
+printf '%s\n' '{"title":"日本語"}' | node vendor/py_launch.cjs --env-var CLI_ARGS_PYTHON -- cli_args.py render --format json
+node vendor/py_launch.cjs --env-var CLI_ARGS_PYTHON --call trim_output -- cli_args.py $'a\nb\nc\nd' 1 1
 ```
 
-Running it directly as a CLI has the same contract as `node cli_args.cjs run` (JSON on stdin) or `node cli_args.cjs render --format json` (value on stdin). Invalid JSON or unknown fields make Python exit 2, which surfaces as `CliArgsRequestError` in the library API. An interpreter launch failure is `cli_args Python process failed: …`.
+```javascript
+const path = require("node:path");
+const {run, call} = require("./vendor/py_launch.cjs");
 
-**Behavior change (#27):** if Node's `runCommand` omits `opts.max_output`, Python is **always** sent `max_output: CLI_RUN_DEFAULT_MAX_OUTPUT_BYTES` (4 MiB). The earlier Node wrapper was close to unlimited, but the bridge cuts the child's combined stdout/stderr at 4 MiB. For larger output, set `opts.max_output` explicitly (up to `CLI_RUN_MAX_OUTPUT_BYTES`, 8 MiB). Calling `python -S cli_args.py run` directly is still unlimited when `max_output` is omitted.
+const script = path.join(__dirname, "cli_args.py");
+const py = {envVar: "CLI_ARGS_PYTHON", noSite: true};
 
-Node adds `response_max_bytes: CLI_RUN_RESPONSE_MAX_BYTES` (96 MiB) to `run` requests, and Python checks **the UTF-8 length of the JSON it actually serialized** against that limit before writing to stdout. Exceeding it exits **1** (`response exceeds response_max_bytes` on stderr). The Node-side spawn buffer is only `py_launch`'s `responseMaxBytes` (with `CLI_HOST_RESPONSE_MARGIN_BYTES` added internally); no JSON size estimate is used. `render` performs the same check with `--response-max-bytes CLI_RENDER_RESPONSE_MAX_BYTES`. `run` JSON always includes `output_limited` (`false` is not omitted).
+const result = JSON.parse(
+  run(script, ["run"], {
+    ...py,
+    input: `${JSON.stringify({argv: ["git", "status", "--short"], max_output: 4 * 1024 * 1024, response_max_bytes: 96 * 1024 * 1024})}\n`,
+    maxInputBytes: 4 * 1024 * 1024,
+    responseMaxBytes: 96 * 1024 * 1024,
+  }).stdout.toString("utf8"),
+);
+console.log(result.returncode, result.stdout, result.stdout_b64);
+
+const rendered = call(script, "render_output", {args: [{title: "日本語"}], kwargs: {format: "json"}}, py);
+```
+
+Python checks **the UTF-8 length of the JSON it actually serialized** against `response_max_bytes` (`run`) or `--response-max-bytes` (`render`) before writing to stdout. Exceeding it exits **1** (`response exceeds response_max_bytes` on stderr). Invalid JSON or unknown fields make Python exit **2**. `run` JSON always includes `output_limited` (`false` is not omitted).
 
 The vendored launcher is byte-for-byte from parent commit
-`384f5dd532076062f7833038764e9a62322c387c` (parent PR #194).
-`noSite: true` now covers interpreter discovery as well as execution.
+`de63762d8485e4d398a651715d34ebf4a04c23f2` (parent PR #296, including `--call` / `call()` UTF-8 stdin decoding).
+`noSite: true` covers interpreter discovery as well as execution.
 The shared launcher's opt-in `isolated` flag also covers discovery; it remains off
 for this entry. On POSIX, repeated SIGINT/SIGTERM are forwarded until the Python
 child exits, including when it handles an earlier signal and keeps running.
