@@ -15,69 +15,90 @@
       ]
     },
     {
-      "type": "section",
-      "title": "📥 取得",
-      "blocks": [
+      "type": "tabs",
+      "id": "guide",
+      "tabs": [
         {
-          "type": "text",
-          "text": "1 ファイルを置くだけで動きます（pip 不要）。"
-        },
-        {
-          "type": "output",
-          "text": "curl -fsSLO https://raw.githubusercontent.com/myon-bioinformatics/cli_args/main/cli_args.py"
-        }
-      ]
-    },
-    {
-      "type": "section",
-      "title": "▶️ 実行",
-      "blocks": [
-        {
-          "type": "card",
-          "title": "🤔 タイポの補助",
-          "text": "打ち間違いに候補を出します（終了コードは 2 のまま）。",
+          "label": "🧩 機能一覧",
           "blocks": [
             {
-              "type": "output",
-              "text": "$ python -c 'from cli_args import Argument, parse_args; parse_args([Argument((\"--format\",), {\"choices\": (\"text\", \"json\")})], [\"--fomrat\", \"json\"])'\nusage: -c [-h] [--format {text,json}]\n-c: error: unrecognized arguments: --fomrat json (did you mean '--format'?)"
+              "type": "section",
+              "title": "📥 取得",
+              "blocks": [
+                {
+                  "type": "text",
+                  "text": "1 ファイルを置くだけで動きます（pip 不要）。"
+                },
+                {
+                  "type": "output",
+                  "text": "curl -fsSLO https://raw.githubusercontent.com/myon-bioinformatics/cli_args/main/cli_args.py"
+                }
+              ]
+            },
+            {
+              "type": "section",
+              "title": "▶️ 実行",
+              "blocks": [
+                {
+                  "type": "card",
+                  "title": "🤔 タイポの補助",
+                  "text": "打ち間違いに候補を出します（終了コードは 2 のまま）。",
+                  "blocks": [
+                    {
+                      "type": "output",
+                      "text": "$ python -c 'from cli_args import Argument, parse_args; parse_args([Argument((\"--format\",), {\"choices\": (\"text\", \"json\")})], [\"--fomrat\", \"json\"])'\nusage: -c [-h] [--format {text,json}]\n-c: error: unrecognized arguments: --fomrat json (did you mean '--format'?)"
+                    }
+                  ]
+                },
+                {
+                  "type": "card",
+                  "title": "🧾 JSON を整形して出す",
+                  "text": "標準入力の JSON 値を render_output で出します。",
+                  "blocks": [
+                    {
+                      "type": "output",
+                      "text": "$ echo '{\"a\": 1}' | python cli_args.py render --format json\n{\n  \"a\": 1\n}"
+                    }
+                  ]
+                },
+                {
+                  "type": "card",
+                  "title": "🏃 コマンドを実行",
+                  "text": "標準入力の JSON リクエストからコマンドを実行します（シェルは通しません）。",
+                  "blocks": [
+                    {
+                      "type": "output",
+                      "text": "$ python cli_args.py run --help"
+                    }
+                  ]
+                }
+              ]
+            },
+            {
+              "type": "section",
+              "title": "🐍 Python から呼ぶ",
+              "blocks": [
+                {
+                  "type": "output",
+                  "text": "$ python -c 'from cli_args import Argument, parse_args; print(parse_args([Argument((\"--mode\",), {\"choices\": (\"read\", \"convert\"), \"required\": True}), Argument((\"files\",), {\"nargs\": \"+\"})], [\"--mode\", \"read\", \"a.html\"]))'\nNamespace(mode='read', files=['a.html'])"
+                },
+                {
+                  "type": "output",
+                  "text": "$ python -c 'from cli_args import Command; print(Command((\"git\",)).option(\"-C\", \"/repo\").positional(\"status\").flag(\"--short\").argv)'\n('git', '-C', '/repo', 'status', '--short')"
+                }
+              ]
             }
           ]
         },
         {
-          "type": "card",
-          "title": "🧾 JSON を整形して出す",
-          "text": "標準入力の JSON 値を render_output で出します。",
+          "label": "🎞 GIF デモ",
           "blocks": [
             {
-              "type": "output",
-              "text": "$ echo '{\"a\": 1}' | python cli_args.py render --format json\n{\n  \"a\": 1\n}"
+              "type": "text",
+              "text": "🎞 まだ GIF はありません。ブラウザテストや実行の様子を GIF にしたら、ここに並びます。",
+              "muted": true
             }
           ]
-        },
-        {
-          "type": "card",
-          "title": "🏃 コマンドを実行",
-          "text": "標準入力の JSON リクエストからコマンドを実行します（シェルは通しません）。",
-          "blocks": [
-            {
-              "type": "output",
-              "text": "$ python cli_args.py run --help"
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "type": "section",
-      "title": "🐍 Python から呼ぶ",
-      "blocks": [
-        {
-          "type": "output",
-          "text": "$ python -c 'from cli_args import Argument, parse_args; print(parse_args([Argument((\"--mode\",), {\"choices\": (\"read\", \"convert\"), \"required\": True}), Argument((\"files\",), {\"nargs\": \"+\"})], [\"--mode\", \"read\", \"a.html\"]))'\nNamespace(mode='read', files=['a.html'])"
-        },
-        {
-          "type": "output",
-          "text": "$ python -c 'from cli_args import Command; print(Command((\"git\",)).option(\"-C\", \"/repo\").positional(\"status\").flag(\"--short\").argv)'\n('git', '-C', '/repo', 'status', '--short')"
         }
       ]
     },
