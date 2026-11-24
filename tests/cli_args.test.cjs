@@ -174,18 +174,22 @@ test("call invokes cli_args.py functions by name and preserves non-ASCII text", 
   const value = {title: "日本語 & é 🌱", n: 2};
   const rendered = call(SCRIPT, "render_output", {args: [value], kwargs: {format: "json"}}, PY_LAUNCH);
   assert.deepEqual(JSON.parse(rendered), value);
-  const trimmed = call(SCRIPT, "trim_output", ["a\nb\nc\nd\ne", 1, 1], PY_LAUNCH);
+  const trimmed = call(SCRIPT, "trim_output", {args: ["a\nb\nc\nd\ne"], kwargs: {head: 1, tail: 1}}, PY_LAUNCH);
   assert.equal(trimmed, "a\n... 3 line(s) omitted ...\ne");
 });
 
 test("py_launch CLI --call runs cli_args.py functions by name", () => {
+  // The CLI form passes positional args only, so this uses trim_output's
+  // default head/tail (40/40) with an input long enough to be trimmed.
+  const lines = Array.from({length: 100}, (_, i) => `l${i}`);
   const result = spawnSync(
     process.execPath,
-    [LAUNCHER, "--env-var", "CLI_ARGS_PYTHON", "--call", "trim_output", "--", SCRIPT, "a\nb\nc\nd", "1", "1"],
+    [LAUNCHER, "--env-var", "CLI_ARGS_PYTHON", "--call", "trim_output", "--", SCRIPT, lines.join("\n")],
     {encoding: "utf8"},
   );
   assert.equal(result.status, 0, result.stderr);
-  assert.equal(JSON.parse(result.stdout), "a\n... 2 line(s) omitted ...\nd");
+  const expected = [...lines.slice(0, 40), "... 20 line(s) omitted ...", ...lines.slice(60)].join("\n");
+  assert.equal(JSON.parse(result.stdout), expected);
 });
 
 test("CLI_ARGS_PYTHON env is honored without silent fallback", () => {
