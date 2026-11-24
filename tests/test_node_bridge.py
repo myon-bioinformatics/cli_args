@@ -324,7 +324,15 @@ class LauncherRegressionTests(unittest.TestCase):
                 f"from pathlib import Path\nPath({str(marker)!r}).touch()\n", encoding="utf-8",
             )
             result = subprocess.run(
-                [self.node, str(self.root / f"{self.tool}.cjs"), "--help"],
+                [
+                    self.node,
+                    str(self.root / "vendor" / "py_launch.cjs"),
+                    "--env-var",
+                    "CLI_ARGS_PYTHON",
+                    "--",
+                    str(self.root / f"{self.tool}.py"),
+                    "--help",
+                ],
                 env=dict(self.env, PYTHONPATH=str(root)), capture_output=True, timeout=30,
             )
             self.assertEqual(result.returncode, 0, result.stderr)
