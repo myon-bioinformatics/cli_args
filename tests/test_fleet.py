@@ -161,10 +161,13 @@ class CiPythonSetupTests(unittest.TestCase):
 
     def test_compatibility_matrix_and_required_report_identities_are_preserved(self):
         text = (ROOT / ".github/workflows/ci.yml").read_text(encoding="utf-8")
-        self.assertIn("python: ['3.11', '3.12', '3.14']", text)
-        match = re.search(r"expected-reports: '([^']+)'", job("ci.yml", "failure-identity"))
+        # ⏱ pull requests run 3.14 and a subset of the reports; main keeps the whole matrix and every report
+        self.assertIn("""python: ${{ github.event_name == 'pull_request' && fromJSON('["3.14"]') || fromJSON('["3.11", "3.12", "3.14"]') }}""", text)
+        match = re.search(r"expected-reports: \$\{\{ github\.event_name == 'pull_request' && '([^']+)' \|\| '([^']+)' \}\}",
+                          job("ci.yml", "failure-identity"))
         self.assertIsNotNone(match)
-        self.assertEqual(json.loads(match.group(1)), EXPECTED_REPORTS)
+        self.assertEqual(json.loads(match.group(2)), EXPECTED_REPORTS)
+        self.assertLess(set(json.loads(match.group(1))), set(EXPECTED_REPORTS))
 
     def test_frozen_container_baseline_and_locked_commands_are_preserved(self):
         dockerfile = (ROOT / "tests/docker/Dockerfile").read_text(encoding="utf-8")

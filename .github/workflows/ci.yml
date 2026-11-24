@@ -40,7 +40,6 @@ jobs:
           python-version: "3.15"
           activate-environment: true
           enable-cache: true
-          # Pull requests restore the cache and never write it; only main saves it.
           save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           prune-cache: true
       - name: Resolve parent main for shared vendor tools
@@ -79,9 +78,9 @@ jobs:
     needs: changes
     runs-on: ubuntu-latest
     strategy:
-      fail-fast: false
+      fail-fast: ${{ github.event_name == 'pull_request' }}
       matrix:
-        python: ['3.11', '3.12', '3.14']
+        python: ${{ github.event_name == 'pull_request' && fromJSON('["3.14"]') || fromJSON('["3.11", "3.12", "3.14"]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -93,7 +92,6 @@ jobs:
           python-version: "${{ matrix.python }}"
           activate-environment: true
           enable-cache: true
-          # Pull requests restore the cache and never write it; only main saves it.
           save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           prune-cache: true
       - name: Sync locked development environment
@@ -118,10 +116,10 @@ jobs:
     name: node bridge (${{ matrix.os }} / node ${{ matrix.node }})
     runs-on: ${{ matrix.os }}
     strategy:
-      fail-fast: false
+      fail-fast: ${{ github.event_name == 'pull_request' }}
       matrix:
-        os: [ubuntu-latest, windows-latest, macos-latest]
-        node: ['26', 'latest']
+        os: ${{ github.event_name == 'pull_request' && fromJSON('["ubuntu-latest"]') || fromJSON('["ubuntu-latest", "windows-latest", "macos-latest"]') }}
+        node: ${{ github.event_name == 'pull_request' && fromJSON('["26"]') || fromJSON('["26", "latest"]') }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
@@ -133,7 +131,6 @@ jobs:
           python-version: "3.15"
           activate-environment: true
           enable-cache: true
-          # Pull requests restore the cache and never write it; only main saves it.
           save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           prune-cache: true
       - name: Sync locked development environment
@@ -153,7 +150,7 @@ jobs:
 
   docker-integration:
     timeout-minutes: 30
-    if: needs.changes.outputs.product_changed == 'true'
+    if: needs.changes.outputs.product_changed == 'true' && github.event_name != 'pull_request'
     needs: changes
     runs-on: ubuntu-latest
     steps:
@@ -164,7 +161,6 @@ jobs:
           python-version: "3.15"
           activate-environment: true
           enable-cache: true
-          # Pull requests restore the cache and never write it; only main saves it.
           save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           prune-cache: true
       - name: Sync locked development environment
@@ -220,7 +216,7 @@ jobs:
     name: core portability (${{ matrix.os }})
     runs-on: ${{ matrix.runner }}
     strategy:
-      fail-fast: false
+      fail-fast: ${{ github.event_name == 'pull_request' }}
       matrix:
         include:
           - os: windows
@@ -238,7 +234,6 @@ jobs:
           python-version: "3.15"
           activate-environment: true
           enable-cache: true
-          # Pull requests restore the cache and never write it; only main saves it.
           save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           prune-cache: true
       - name: Sync locked development environment
@@ -272,7 +267,6 @@ jobs:
           python-version: "3.15"
           activate-environment: true
           enable-cache: true
-          # Pull requests restore the cache and never write it; only main saves it.
           save-cache: ${{ github.event_name == 'push' && github.ref == 'refs/heads/main' }}
           prune-cache: true
       - name: Sync locked development environment
@@ -317,7 +311,7 @@ jobs:
     uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-junit-identity.yml@0778ede0c872d609bb2dc590f9f9898a39a18668
     with:
       commit-sha: ${{ github.event.pull_request.head.sha || github.sha }}
-      expected-reports: '["junit-py3.11/pytest-3.11.xml","junit-py3.12/pytest-3.12.xml","junit-py3.14/pytest-3.14.xml","junit-node-ubuntu-latest-26/node-ubuntu-latest-26.xml","junit-node-ubuntu-latest-latest/node-ubuntu-latest-latest.xml","junit-node-windows-latest-26/node-windows-latest-26.xml","junit-node-windows-latest-latest/node-windows-latest-latest.xml","junit-node-macos-latest-26/node-macos-latest-26.xml","junit-node-macos-latest-latest/node-macos-latest-latest.xml","junit-docker-integration/docker-integration.xml","junit-container-real/container-real.xml","junit-core-windows/core-windows.xml","junit-core-macos/core-macos.xml"]'
+      expected-reports: ${{ github.event_name == 'pull_request' && '["junit-py3.14/pytest-3.14.xml","junit-node-ubuntu-latest-26/node-ubuntu-latest-26.xml","junit-core-windows/core-windows.xml","junit-core-macos/core-macos.xml"]' || '["junit-py3.11/pytest-3.11.xml","junit-py3.12/pytest-3.12.xml","junit-py3.14/pytest-3.14.xml","junit-node-ubuntu-latest-26/node-ubuntu-latest-26.xml","junit-node-ubuntu-latest-latest/node-ubuntu-latest-latest.xml","junit-node-windows-latest-26/node-windows-latest-26.xml","junit-node-windows-latest-latest/node-windows-latest-latest.xml","junit-node-macos-latest-26/node-macos-latest-26.xml","junit-node-macos-latest-latest/node-macos-latest-latest.xml","junit-docker-integration/docker-integration.xml","junit-container-real/container-real.xml","junit-core-windows/core-windows.xml","junit-core-macos/core-macos.xml"]' }}
       artifact-pattern: "junit-*"
       output-artifact: failure-identity
 
