@@ -1,7 +1,7 @@
 {
   "schema": "web-ui-page/1",
   "title": "cli_args 利用ガイド",
-  "theme": "auto",
+  "theme": "modern",
   "description": "CLI 引数の定義・検証、コマンドの組み立てと実行、JSON / テキスト出力を使い回すための単一ファイル。",
   "icon": "./icon.png",
   "favicon": "./favicon.png",
