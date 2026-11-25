@@ -91,6 +91,71 @@
           ]
         },
         {
+          "label": "🔬 検証ガイド",
+          "blocks": [
+            {
+              "type": "runbook",
+              "id": "verify",
+              "books": [
+                {
+                  "label": "🐍 python",
+                  "intro": "🤖 のついた手順は CI で実際に動かし、出た結果をそのまま載せています。",
+                  "runbook": {
+                    "key": "cli-args/python",
+                    "steps": [
+                      {
+                        "id": "get",
+                        "title": "📥 ファイルを置く",
+                        "command": "curl -fsSLO https://raw.githubusercontent.com/myon-bioinformatics/cli_args/main/cli_args.py",
+                        "needs": "🌐 ネットワーク"
+                      },
+                      {
+                        "id": "render",
+                        "title": "🧾 JSON を整形して出す",
+                        "command": "echo '{\"a\": 1}' | python cli_args.py render --format json",
+                        "run": true
+                      },
+                      {
+                        "id": "run",
+                        "title": "🏃 コマンドを実行",
+                        "command": "python cli_args.py run --help",
+                        "run": true
+                      },
+                      {
+                        "id": "command",
+                        "title": "🐍 Python から呼ぶ",
+                        "command": "python -c 'from cli_args import Command; print(Command((\"git\",)).option(\"-C\", \"/repo\").positional(\"status\").flag(\"--short\").argv)'",
+                        "run": true
+                      }
+                    ]
+                  }
+                },
+                {
+                  "label": "⚡ uv",
+                  "intro": "uv があれば Python の版を気にせず動きます。",
+                  "runbook": {
+                    "key": "cli-args/uv",
+                    "steps": [
+                      {
+                        "id": "get",
+                        "title": "📥 ファイルを置く",
+                        "command": "curl -fsSLO https://raw.githubusercontent.com/myon-bioinformatics/cli_args/main/cli_args.py",
+                        "needs": "🌐 ネットワーク"
+                      },
+                      {
+                        "id": "render",
+                        "title": "🧾 JSON を整形して出す",
+                        "command": "echo '{\"a\": 1}' | uv run --no-project python cli_args.py render --format json",
+                        "run": true
+                      }
+                    ]
+                  }
+                }
+              ]
+            }
+          ]
+        },
+        {
           "label": "🎞 GIF デモ",
           "blocks": [
             {
