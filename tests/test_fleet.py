@@ -145,7 +145,7 @@ class CiPythonSetupTests(unittest.TestCase):
             python: "3.11"
           - os: macos-latest
             python: "3.14"
-        exclude: ${{ github.event_name == 'pull_request' && fromJSON('[{"python":"3.11"},{"python":"3.12"},{"python":"3.13"},{"os":"windows-latest","python":"3.14"},{"os":"macos-latest","python":"3.14"}]') || fromJSON('[]') }}
+        exclude: ${{ github.event_name == 'pull_request' && fromJSON('[{"os":"ubuntu-latest","python":"3.11"},{"os":"ubuntu-latest","python":"3.12"},{"os":"ubuntu-latest","python":"3.13"},{"os":"windows-latest","python":"3.11"},{"os":"windows-latest","python":"3.14"},{"os":"macos-latest","python":"3.11"},{"os":"macos-latest","python":"3.14"}]') || fromJSON('[]') }}
 ''')
         self.assertIn("runs-on: ${{ matrix.os }}", block)
         self.assertIn("fail-fast: false", block)
