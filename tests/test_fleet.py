@@ -136,16 +136,8 @@ class CiPythonSetupTests(unittest.TestCase):
         self.assertIsNotNone(matrix)
         self.assertEqual(matrix.group(1), '''        os: [ubuntu-latest]
         python: ["3.11", "3.12", "3.13", "3.14"]
-        include:
-          - os: windows-latest
-            python: "3.11"
-          - os: windows-latest
-            python: "3.14"
-          - os: macos-latest
-            python: "3.11"
-          - os: macos-latest
-            python: "3.14"
-        exclude: ${{ github.event_name == 'pull_request' && fromJSON('[{"os":"ubuntu-latest","python":"3.11"},{"os":"ubuntu-latest","python":"3.12"},{"os":"ubuntu-latest","python":"3.13"},{"os":"windows-latest","python":"3.11"},{"os":"windows-latest","python":"3.14"},{"os":"macos-latest","python":"3.11"},{"os":"macos-latest","python":"3.14"}]') || fromJSON('[]') }}
+        include: ${{ github.event_name == 'pull_request' && fromJSON('[]') || fromJSON('[{"os":"windows-latest","python":"3.11"},{"os":"windows-latest","python":"3.14"},{"os":"macos-latest","python":"3.11"},{"os":"macos-latest","python":"3.14"}]') }}
+        exclude: ${{ github.event_name == 'pull_request' && fromJSON('[{"os":"ubuntu-latest","python":"3.11"},{"os":"ubuntu-latest","python":"3.12"},{"os":"ubuntu-latest","python":"3.13"}]') || fromJSON('[]') }}
 ''')
         self.assertIn("runs-on: ${{ matrix.os }}", block)
         self.assertIn("fail-fast: false", block)
