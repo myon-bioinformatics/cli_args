@@ -113,3 +113,51 @@ def test_run_cli_python_options_reject_str_set_and_generator():
         run_cli("tool.py", python_options={"-S"})
     with pytest.raises(TypeError, match="ordered sequences"):
         run_cli("tool.py", python_options=(value for value in ("-S",)))
+
+
+CP932_OUT = """
+import sys
+sys.stdout.buffer.write("東京\\n".encode("cp932"))
+sys.stderr.buffer.write("エラー\\n".encode("cp932"))
+"""
+
+CP932_ECHO = """
+import sys
+sys.stdout.buffer.write(sys.stdin.buffer.read().decode("cp932").encode("cp932"))
+"""
+
+
+def test_encoding_decodes_stdout_and_stderr(tmp_path):
+    script = write_script(tmp_path, CP932_OUT)
+    result = run_cli(script, encoding="cp932")
+    assert result.returncode == 0
+    assert result.stdout == "東京\n"
+    assert result.stderr == "エラー\n"
+
+
+def test_default_encoding_replaces_bytes_the_codec_cannot_read(tmp_path):
+    script = write_script(tmp_path, CP932_OUT)
+    result = run_cli(script)
+    assert result.stdout != "東京\n"
+    assert "�" in result.stdout
+
+
+def test_encoding_applies_to_stdin_text(tmp_path):
+    script = write_script(tmp_path, CP932_ECHO)
+    result = run_cli(script, stdin="東京", encoding="cp932")
+    assert result.stdout == "東京"
+
+
+def test_unknown_encoding_fails_before_launch(tmp_path):
+    script = write_script(tmp_path, PLAIN)
+    with pytest.raises(LookupError):
+        run_cli(script, encoding="no-such-codec")
+    with pytest.raises(TypeError):
+        run_cli(script, encoding=932)
+
+
+def test_run_command_accepts_encoding(tmp_path):
+    script = write_script(tmp_path, CP932_OUT)
+    result = cli_args.run_command(
+        cli_args.Command((sys.executable, str(script))), encoding="cp932")
+    assert result.stdout == "東京\n"
