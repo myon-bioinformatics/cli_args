@@ -1,5 +1,6 @@
 name: Stdlib runtime compatibility
 on:
+  workflow_dispatch:
   push:
     branches: [main]
   pull_request:
@@ -35,3 +36,14 @@ jobs:
           prune-cache: true
       - name: Exercise runtime behavior without site-packages
         run: python -S -m unittest discover -s tests -p test_runtime_compatibility.py -v
+
+  # 🔁 own sources follow main: on schedule / manual run, take main of own repositories and push to main
+  follow-main:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    uses: myon-bioinformatics/myon-bioinformatics/.github/workflows/reusable-follow-main.yml@main
+    permissions:
+      contents: write
+    with:
+      node-version: "26"
+      check: |
+        uv run --locked pytest -q -m "not network"
