@@ -17,28 +17,26 @@ Python 3.11+ (declared in `pyproject.toml`). Vendor it by copying `cli_args.py`.
 Load vendored single-file modules (`cli_args.py`, `fleet_check.py`, …) **by path, under a name unique to your repository**. Do not write `from vendor import …` or `from vendor.cli_args import …`: a top-level `vendor` package collides when several repositories run in one process (Aoi runs its children together in one pytest), and sibling-import guards reject it. This is the one pattern the fleet uses; it is standard library only and works on Python 3.9+:
 
 ```python
-import importlib.util, sys
+import importlib.util
+import sys
 from pathlib import Path
-
-ROOT = Path(__file__).resolve().parents[1]  # the repository root (here: from tests/)
 
 
 def load_vendored(name, relpath):
-    """Load ROOT/relpath once as module `name` ("<repo>_<module>"; never a top-level `vendor`)."""
+    """Load a vendored file by path under a repo-unique name (cli_args README: Loading a vendored copy)."""
     if name not in sys.modules:
-        spec = importlib.util.spec_from_file_location(name, ROOT / relpath)
+        spec = importlib.util.spec_from_file_location(name, Path(__file__).resolve().parents[1] / relpath)
         module = importlib.util.module_from_spec(spec)
         sys.modules[name] = module  # before exec: dataclasses and pickling look the module up here
         spec.loader.exec_module(module)
     return sys.modules[name]
 
 
-cli_args = load_vendored("myrepo_cli_args", "vendor/cli_args.py")
 fleet = load_vendored("myrepo_fleet_check", "vendor/fleet_check.py")
-run_cli = cli_args.run_cli
+run_cli = load_vendored("myrepo_cli_args", "vendor/cli_args.py").run_cli
 ```
 
-Keep the vendored file where `vendor.lock.json` says it is (for example `vendor/cli_args.py`, or `vendor/cli_args/cli_args.py`) and pass that path. Reusing the same name returns the same module, so `Command` and other classes stay identical across test files.
+Name each module `<repo>_<module>` (lowercase repository name). `parents[1]` is the repository root for a file in `tests/`; use `parents[0]` at the root, `parents[2]` one level deeper. Keep the vendored file where `vendor.lock.json` says it is (for example `vendor/cli_args.py`, or `vendor/cli_args/cli_args.py`) and pass that path. Reusing the same name returns the same module, so `Command` and other classes stay identical across test files. Put the helper and the loads after the file's imports, so no `# noqa: E402` is needed.
 
 ## Reusing argument definitions
 
