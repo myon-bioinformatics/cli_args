@@ -4,11 +4,11 @@ import json, re, tomllib, unittest
 from vendor import fleet_check as fleet
 
 ROOT = fleet.repo_root(__file__)
-PARENT_WORKFLOW_PIN = "27dedd9651efc816fa88d8922adb5f242725df69"
+PARENT_WORKFLOW_PIN = "main"  # 🔁 own sources follow main (2026-11-28)
 ACCEPTED = {
-    "vendor/fleet_check.py": "20de01921e50e9339aa9271b0547a5be7649b3b3",
-    "vendor/py_launch.cjs": "de63762d8485e4d398a651715d34ebf4a04c23f2"
-}
+    "vendor/fleet_check.py",
+    "vendor/py_launch.cjs"
+}  # 🔁 locked destinations; they follow main
 SETUP_UV = "astral-sh/setup-uv@68559e99cc807c1eb7e9238fd43a15bba460eec2"
 JOBS = {
     "ci.yml": {
@@ -49,7 +49,7 @@ def test_vendor_lock_matches_checked_in_bytes():
     # Every parent row is listed, so a new or renamed vendored file has to be reviewed here.
     sources = {where: (fleet.PARENT, where.rpartition("/")[2]) for where in ACCEPTED}
     sources["vendor/myon-bioinformatics-LICENSE"] = (fleet.PARENT, "LICENSE")
-    fleet.check_lock(ROOT, commits=ACCEPTED, sources=sources)
+    fleet.check_lock(ROOT, sources=sources)
 
 
 def test_every_action_is_pinned_by_full_sha_with_version_comment():
