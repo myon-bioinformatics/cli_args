@@ -1,4 +1,4 @@
-import json, os, shutil, subprocess, sys, tempfile, textwrap, unittest
+import importlib.util, json, os, shutil, subprocess, sys, tempfile, textwrap, unittest
 from pathlib import Path
 
 import pytest
@@ -6,7 +6,19 @@ import pytest
 import cli_args
 from cli_args import (NodeNotFoundError, add_node_arguments, build_env, is_node_target,
                       make_parser, node_command, node_or_command, resolve_node, run_node)
-from vendor import fleet_check as fleet
+
+
+def load_vendored(name, relpath):
+    """Load a vendored file by path under a repo-unique name (cli_args README: Loading a vendored copy)."""
+    if name not in sys.modules:
+        spec = importlib.util.spec_from_file_location(name, Path(__file__).resolve().parents[1] / relpath)
+        module = importlib.util.module_from_spec(spec)
+        sys.modules[name] = module
+        spec.loader.exec_module(module)
+    return sys.modules[name]
+
+
+fleet = load_vendored("cli_args_fleet_check", "vendor/fleet_check.py")
 
 
 def reset_node_probe_cache():
